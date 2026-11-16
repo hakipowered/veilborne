@@ -1,0 +1,38 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Veilborne"
+config/description="Original co-op isometric action roguelike vertical slice."
+run/main_scene="res://scenes/main.tscn"
+config/icon="res://icon.png"
+config/features=PackedStringArray("4.3", "Mobile")
+
+[autoload]
+
+Game="*res://autoload/game.gd"
+Net="*res://autoload/net.gd"
+Updater="*res://autoload/updater.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0.07, 0.05, 0.09, 1)
