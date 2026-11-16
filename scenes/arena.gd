@@ -101,6 +101,50 @@ func setup(players: Array) -> void:
 		h.sync_boons()
 	_load_room(0)
 
+# ---------------------------------------------------------------- audio
+
+var _audio: Node = null
+var _enemy_states := {} ## eid -> last state code (to voice enemy actions on every device)
+var _step_t := 0.0
+
+func sfx(name: String, pos := Vector2.INF) -> void:
+	if _audio == null:
+		_audio = get_node_or_null("/root/Audio")
+	if _audio:
+		_audio.sfx(name, pos)
+
+func _music(track: String) -> void:
+	if _audio == null:
+		_audio = get_node_or_null("/root/Audio")
+	if _audio:
+		_audio.music(track)
+
+## Plays enemy action sounds from state changes, so host and clients hear the same thing.
+func _voice_enemies() -> void:
+	for e in enemy_nodes.values():
+		if not is_instance_valid(e):
+			continue
+		var st: int = e.state
+		var prev: int = _enemy_states.get(e.eid, -1)
+		if st == prev:
+			continue
+		_enemy_states[e.eid] = st
+		if prev == -1 and e.kind == "regent":
+			sfx("regent_roar", e.position)
+			shake(14.0)
+		match e.kind:
+			"shade":
+				if st == 3: sfx("shade_lunge", e.position)
+			"spitter":
+				if st == 3: sfx("spitter_shoot", e.position)
+			"brute":
+				if st == 2: sfx("brute_slam", e.position)
+			"regent":
+				match st:
+					6: sfx("regent_burst", e.position)
+					8: sfx("regent_charge", e.position)
+					11: sfx("regent_summon", e.position)
+
 # ---------------------------------------------------------------- queries
 
 func is_authority() -> bool:
@@ -172,6 +216,7 @@ func _load_room(idx: int) -> void:
 	camera.position = Vector2(0, room_half.y * 0.4)
 	camera.reset_smoothing()
 	hud.set_room_name("%s  ·  %d/%d" % [room["name"], idx + 1, ROOMS.size()])
+	_music("boss" if room.get("boss", false) else "catacombs")
 	if boss_pending:
 		wave_delay = 999.0
 		_play_dialogue("PRE_BOSS", func():
@@ -275,7 +320,16 @@ func _broadcast(kind: String, args: Array) -> void:
 
 # ---------------------------------------------------------------- combat
 
+func _action_sound(hero: Node, action: String, pos: Vector2) -> void:
+	if action.begins_with("attack"):
+		sfx("swing_spear" if hero.def["weapon"] == "spear" else "swing_blades", pos)
+	elif action == "special":
+		sfx("special_ember" if hero.def["weapon"] == "spear" else "special_moon", pos)
+	elif action == "dash":
+		sfx("dash", pos)
+
 func hero_action_local(hero: Node, action: String, pos: Vector2, dir: Vector2, seq: int) -> void:
+	_action_sound(hero, action, pos)
 	if is_authority():
 		_resolve_action(hero, action, pos, dir, seq, false)
 	else:
@@ -331,6 +385,7 @@ func _resolve_action(hero: Node, action: String, pos: Vector2, dir: Vector2, seq
 		big = big or crit
 		var hit_pos: Vector2 = e.position + Vector2(0, -40)
 		spark(hit_pos, Color(1, 0.95, 0.7) if not crit else Color(1, 0.4, 0.3), 10 if not crit else 18)
+		sfx("hit_crit" if crit else "hit_flesh", e.position)
 		if predict:
 			e.flash_hit()
 			_damage_number(hit_pos, amount, crit)
@@ -377,6 +432,7 @@ func on_enemy_killed(enemy: Node, attacker_key: String) -> void:
 
 func on_local_hero_hurt(_hero: Node, amount: float) -> void:
 	shake(10.0)
+	sfx("hero_down" if _hero.downed else "hero_hurt", _hero.position)
 	float_text(_hero.position + Vector2(0, -110), "-%d" % int(amount), Color(1, 0.3, 0.3))
 	if OS.has_feature("mobile"):
 		Input.vibrate_handheld(40)
@@ -404,6 +460,8 @@ func net_hero_state(key: String, s: Array) -> void:
 
 func net_hero_action(key: String, action: String, pos: Vector2, dir: Vector2, seq: int) -> void:
 	var h = hero_nodes.get(key)
+	if is_instance_valid(h):
+		_action_sound(h, action, pos)
 	if is_instance_valid(h) and is_authority():
 		_resolve_action(h, action, pos, dir, seq, false)
 
@@ -449,6 +507,7 @@ func net_event(kind: String, a: Array) -> void:
 			var e = enemy_nodes.get(a[0])
 			if is_instance_valid(e) and not (is_instance_valid(attacker) and attacker.controlled):
 				e.flash_hit()
+				sfx("hit_crit" if a[2] else "hit_flesh", e.position)
 				_damage_number(e.position + Vector2(0, -50), a[1], a[2])
 		"arc":
 			arcs.append([a[0], a[1], 0.25])
@@ -464,6 +523,8 @@ func net_event(kind: String, a: Array) -> void:
 			_finish(false)
 
 func _on_kill(eid: int, killer: String, pos: Vector2, kind: String) -> void:
+	sfx("regent_die" if kind == "regent" else "enemy_die", pos)
+	_enemy_states.erase(eid)
 	spark(pos + Vector2(0, -40), Color(0.85, 0.5, 1.0), 26)
 	shake(5.0 if kind != "regent" else 22.0)
 	Game.run_shards += 1 if kind != "regent" else 25
@@ -485,6 +546,7 @@ func _on_room_clear() -> void:
 	if room_clear:
 		return
 	room_clear = true
+	sfx("room_clear")
 	hud.float_banner("Chamber cleared", Color(1, 0.85, 0.4))
 	var local := []
 	for h in heroes():
@@ -499,6 +561,7 @@ func _on_room_clear() -> void:
 func _offer_next(queue: Array) -> void:
 	if queue.is_empty():
 		door_open = true
+		sfx("door_open")
 		hud.float_banner("The way forward opens", Color(0.6, 0.9, 1.0))
 		return
 	var h = queue.pop_front()
@@ -511,6 +574,7 @@ func _offer_next(queue: Array) -> void:
 	hud.show_boon_choice(h, choices, func(id: String, rarity: int):
 		if is_instance_valid(h):
 			h.add_boon(id, rarity)
+			sfx("boon_pickup")
 			hud.refresh()
 		_offer_next(queue))
 
@@ -519,6 +583,7 @@ func _finish(victory: bool) -> void:
 		return
 	run_over = true
 	Engine.time_scale = 1.0
+	_music("victory" if victory else "defeat")
 	hud.float_banner("THE REGENT FALLS" if victory else "THE VEIL CLAIMS YOU", Color(1, 0.85, 0.3) if victory else Color(1, 0.3, 0.3))
 	await get_tree().create_timer(2.2).timeout
 	if not is_inside_tree():
@@ -555,6 +620,13 @@ func _physics_process(delta: float) -> void:
 		for e in enemy_nodes.values():
 			if is_instance_valid(e):
 				e.client_update(delta)
+	_voice_enemies()
+	_step_t -= delta
+	if _step_t <= 0.0:
+		_step_t = 0.28
+		for h in hero_nodes.values():
+			if is_instance_valid(h) and h.controlled and h.state == "run":
+				sfx("footstep", h.position)
 	_local_damage_checks(delta)
 	_update_fx(delta)
 	_update_door()
@@ -593,6 +665,7 @@ func _local_damage_checks(delta: float) -> void:
 				if h.position.distance_to(p["pos"]) < p["r"] + 18.0 and h.iframes <= 0.0 and h.state != "dash":
 					h.take_hit(p["dmg"], p["pos"])
 					spark(p["pos"], p["color"], 8)
+					sfx("projectile_hit", p["pos"])
 					dead = true
 					if Net.online:
 						Net.projectile_consumed.rpc(p["id"])
@@ -609,6 +682,7 @@ func _local_damage_checks(delta: float) -> void:
 				if h.position.distance_to(s["pos"]) < s["r"]:
 					h.take_hit(s["dmg"], s["pos"])
 			spark(s["pos"], s["color"], 16)
+			sfx("slam_impact", s["pos"])
 			shake(6.0)
 			slams.remove_at(i)
 		i -= 1

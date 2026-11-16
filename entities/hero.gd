@@ -306,6 +306,7 @@ func heal(amount: float) -> void:
 
 func revive(frac: float) -> void:
 	if controlled and downed:
+		arena.sfx("revive", position)
 		downed = false
 		hp = max_hp * frac
 		iframes = 1.2
