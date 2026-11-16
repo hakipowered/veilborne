@@ -18,10 +18,10 @@ const S_W_SLAM := 10
 const S_SUMMON := 11
 
 const KINDS := {
-	"shade": {"tex": "res://art/shade.png", "h": 110.0, "hp": 34.0, "r": 18.0, "speed": 150.0, "hover": 12.0, "mass": 1.0},
-	"spitter": {"tex": "res://art/spitter.png", "h": 80.0, "hp": 24.0, "r": 18.0, "speed": 120.0, "hover": 0.0, "mass": 1.0},
-	"brute": {"tex": "res://art/brute.png", "h": 150.0, "hp": 95.0, "r": 30.0, "speed": 70.0, "hover": 0.0, "mass": 3.0},
-	"regent": {"tex": "res://art/regent.png", "h": 260.0, "hp": 900.0, "r": 48.0, "speed": 90.0, "hover": 6.0, "mass": 8.0},
+	"shade": {"h": 110.0, "hp": 34.0, "r": 18.0, "speed": 150.0, "hover": 12.0, "mass": 1.0},
+	"spitter": {"h": 80.0, "hp": 24.0, "r": 18.0, "speed": 120.0, "hover": 0.0, "mass": 1.0},
+	"brute": {"h": 150.0, "hp": 95.0, "r": 30.0, "speed": 70.0, "hover": 0.0, "mass": 3.0},
+	"regent": {"h": 260.0, "hp": 900.0, "r": 48.0, "speed": 90.0, "hover": 6.0, "mass": 8.0},
 }
 
 const TELEGRAPH_COLOR := Color(1.0, 0.18, 0.12)

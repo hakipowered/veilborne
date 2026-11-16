@@ -415,7 +415,8 @@
     "frames": 10,
     "fps": 12
    }
-  }
+  },
+  "out_scale": 0.75
  },
  "spitter": {
   "model": "spitter/model.glb",
@@ -457,7 +458,8 @@
     "frames": 10,
     "fps": 12
    }
-  }
+  },
+  "out_scale": 0.9
  },
  "brute": {
   "model": "res://tools/anim/fbx_tmp/b_a0.fbx",
@@ -557,7 +559,8 @@
     "fps": 13,
     "loop": false
    }
-  }
+  },
+  "out_scale": 0.65
  },
  "regent": {
   "model": "regent/r_a0.glb",
@@ -699,6 +702,7 @@
     "fps": 12,
     "loop": false
    }
-  }
+  },
+  "out_scale": 0.9
  }
 }

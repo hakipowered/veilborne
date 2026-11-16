@@ -131,5 +131,8 @@ C["regent"] = {
     },
 }
 
+# Downscale enemy atlases to roughly their on-screen size (keeps the APK under 100 MB).
+for _k, _s in {"brute": 0.65, "regent": 0.9, "shade": 0.75, "spitter": 0.9}.items():
+    C[_k]["out_scale"] = _s
 json.dump(C, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "chars.json"), "w"), indent=1)
 print("ok", list(C))
