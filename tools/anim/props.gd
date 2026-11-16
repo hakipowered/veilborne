@@ -12,7 +12,7 @@ static func _mi(mesh: Mesh, col: Color, pos: Vector3, rot := Vector3.ZERO, emit 
 	mesh.surface_set_material(0, sm)
 	m.position = pos
 	m.rotation_degrees = rot
-	m.set_meta("emit", emit)
+	m.set_meta("emit", emit)   # props skip the hull outline (thin geometry); silhouette ink comes from post.py
 	m.set_meta("emit_col", emit_col)
 	return m
 
@@ -80,15 +80,15 @@ static func build(p: Dictionary) -> Node3D:
 	var root := Node3D.new()
 	match String(p.get("type", "")):
 		"spear":
-			var L: float = float(p.get("length", 1.9))
-			var grip: float = float(p.get("grip", 0.45))   # fraction of shaft behind the hand
+			var L: float = float(p.get("length", 1.75))
+			var grip: float = float(p.get("grip", 0.4))   # fraction of shaft behind the hand
 			var y0 := -L * grip
 			root.add_child(_mi(_cyl(0.017, L), Color(0.32, 0.12, 0.08), Vector3(0, y0 + L * 0.5, 0)))
 			# gold rings
 			for f in [0.0, 0.62, 0.98]:
 				root.add_child(_mi(_cyl(0.026, 0.05), Color(0.95, 0.72, 0.25), Vector3(0, y0 + L * f, 0)))
 			# flame blade
-			root.add_child(_mi(_blade(0.16, 0.42, 0.03), Color(1.0, 0.55, 0.12), Vector3(0, y0 + L, 0), Vector3.ZERO, 0.55, Color(1.0, 0.62, 0.18)))
+			root.add_child(_mi(_blade(0.17, 0.42, 0.05), Color(1.0, 0.55, 0.12), Vector3(0, y0 + L, 0), Vector3.ZERO, 0.55, Color(1.0, 0.62, 0.18)))
 			root.add_child(_mi(_blade(0.07, 0.30, 0.036), Color(1.0, 0.92, 0.55), Vector3(0, y0 + L + 0.03, 0), Vector3.ZERO, 0.8, Color(1.0, 0.95, 0.6)))
 			# cross guard
 			var g := BoxMesh.new(); g.size = Vector3(0.22, 0.04, 0.04)

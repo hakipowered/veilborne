@@ -22,9 +22,9 @@ void fragment() {
 	c = mix(c, mist_color.rgb, m * mist);
 	c *= 0.9 + 0.1 * sin(TIME * 0.5);
 	if (stars > 0.0) {
-		float s = texture(noise_tex, uv * 9.0).a;
-		float tw = 0.5 + 0.5 * sin(TIME * 2.0 + s * 40.0);
-		c += vec3(0.9, 0.85, 1.0) * smoothstep(0.86, 0.95, s) * tw * stars;
+		float s = texture(noise_tex, uv * 31.0).a * texture(noise_tex, uv * 17.0 + 0.3).r;
+		float tw = 0.5 + 0.5 * sin(TIME * 2.0 + s * 60.0);
+		c += vec3(0.9, 0.85, 1.0) * smoothstep(0.62, 0.72, s) * tw * stars;
 	}
 	if (caustics > 0.0) {
 		float a = texture(noise_tex, uv * 3.0 + TIME * vec2(0.03, 0.01)).b;

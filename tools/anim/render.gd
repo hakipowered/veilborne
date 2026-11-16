@@ -122,14 +122,21 @@ func _toonify(root: Node, overrides: Dictionary) -> void:
 				sm.set_shader_parameter("emission_boost", float(m.get_meta("emit")))
 				sm.set_shader_parameter("emission_color", m.get_meta("emit_col"))
 				sm.set_shader_parameter("rim_strength", 0.8)
-			var ol := ShaderMaterial.new()
-			ol.shader = outline_shader
-			ol.set_shader_parameter("width", float(cfg.get("ink_width", 0.010)))
-			sm.next_pass = ol
+			if not m.has_meta("emit"):
+				var ol := ShaderMaterial.new()
+				ol.shader = outline_shader
+				ol.set_shader_parameter("width", float(cfg.get("ink_width", 0.010)))
+				sm.next_pass = ol
 			m.set_surface_override_material(s, sm)
 
 
+var proc: Object = null
+
+
 func _load_model() -> void:
+	if cfg.has("procedural"):
+		_load_procedural()
+		return
 	model = _gltf(cfg["model"])
 	vp.add_child(model)
 	model.scale = Vector3.ONE * float(cfg.get("model_scale", 1.0))
@@ -168,6 +175,24 @@ func _load_model() -> void:
 	_attach_props()
 
 
+func _load_procedural() -> void:
+	## static GLB -> normalised -> auto-rigged with bones from the proc script; poses are computed per frame
+	var src := _gltf(cfg["model"])
+	var AR = load("res://tools/anim/autorig.gd")
+	var res: Array = AR.normalize(src, float(cfg.get("height_m", 1.8)))
+	proc = load(cfg["procedural"]).new()
+	var bones: Array = proc.bones(res[1])
+	print("AABB ", res[1])
+	model = AR.build(res[0], bones, float(cfg.get("weight_sharp", 4.0)))
+	vp.add_child(model)
+	_toonify(model, cfg.get("shade", {}))
+	skel = model.get_node("Skel")
+	player = AnimationPlayer.new()
+	model.add_child(player)
+	player.add_animation_library("x", AnimationLibrary.new())
+	src.free()
+
+
 func _attach_props() -> void:
 	if skel == null:
 		return
@@ -185,6 +210,11 @@ func _attach_props() -> void:
 		ba.add_child(holder)
 		var off: Array = p.get("pos", [0, 0, 0])
 		var rot: Array = p.get("rot", [0, 0, 0])
+		var ov := OS.get_cmdline_user_args()
+		for a in ov:
+			if a.begins_with("--proprot="):
+				var parts: PackedStringArray = a.substr(10).split(",")
+				rot = [float(parts[0]), float(parts[1]), float(parts[2])]
 		holder.position = Vector3(off[0], off[1], off[2])
 		holder.rotation_degrees = Vector3(rot[0], rot[1], rot[2])
 		var w := _gltf(p["file"]) if p.has("file") else _proc_prop(p)
@@ -226,7 +256,26 @@ func _render(anims: Array, dirs: Array, still: bool) -> void:
 	var lib := player.get_animation_library("x")
 	for an in anims:
 		var ad: Dictionary = cfg["anims"][an]
-		var clip: String = ad["clip"]
+		var clip: String = ad.get("clip", "")
+		if proc != null and clip == "":
+			var nf: int = int(ad.get("frames", 8))
+			var lp: bool = ad.get("loop", false)
+			DirAccess.make_dir_recursive_absolute(out_root + "/" + an)
+			for d in dirs:
+				model.rotation_degrees.y = DIR_YAW[d] + float(cfg.get("yaw_offset", 0.0)) + float(ad.get("yaw", 0.0))
+				for i in nf:
+					var u: float = float(i) / float(nf) if lp else float(i) / float(max(nf - 1, 1))
+					skel.reset_bone_poses()
+					model.position = Vector3.ZERO
+					model.scale = Vector3.ONE
+					proc.pose(skel, model, String(ad.get("pose", an)), u)
+					await RenderingServer.frame_post_draw
+					await RenderingServer.frame_post_draw
+					vp.get_texture().get_image().save_png("%s/%s/d%d_%02d.png" % [out_root, an, d, i])
+					if still:
+						break
+			print("rendered ", an)
+			continue
 		if clip == "":
 			DirAccess.make_dir_recursive_absolute(out_root + "/" + an)
 			for d in dirs:

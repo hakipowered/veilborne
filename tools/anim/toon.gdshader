@@ -6,11 +6,11 @@ render_mode unshaded, cull_back, depth_draw_opaque;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
 uniform vec4 albedo_color : source_color = vec4(1.0);
 uniform vec3 light_dir_view = vec3(-0.45, 0.75, 0.5);   // view space, toward light
-uniform vec4 shadow_tint : source_color = vec4(0.58, 0.52, 0.72, 1.0);
+uniform vec4 shadow_tint : source_color = vec4(0.68, 0.62, 0.82, 1.0);
 uniform vec4 rim_color : source_color = vec4(1.0, 0.86, 0.62, 1.0);
 uniform float rim_strength = 0.55;
-uniform float saturation = 1.18;
-uniform float brightness = 1.06;
+uniform float saturation = 1.25;
+uniform float brightness = 1.22;
 uniform float emission_boost = 0.0;   // 0..1 for glowing parts (weapons)
 uniform vec4 emission_color : source_color = vec4(1.0, 0.6, 0.2, 1.0);
 

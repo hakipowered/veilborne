@@ -48,7 +48,8 @@ const THEMES := {
 ## kind -> texture, world height, collision radius (0 = walk-through), foot (fraction of texture height
 ## from the bottom where the object touches the floor), shadow width (world px)
 const PROPS := {
-	"pillar": {"tex": "props/pillar.png", "h": 520.0, "r": 46.0, "foot": 0.02, "shadow": 150.0},
+	"pillar": {"tex": "props/pillar.png", "h": 430.0, "r": 42.0, "foot": 0.02, "shadow": 140.0},
+	"pillar_frame": {"tex": "props/pillar.png", "h": 560.0, "r": 0.0, "foot": 0.02, "shadow": 160.0},
 	"pillar_big": {"tex": "props/pillar.png", "h": 760.0, "r": 0.0, "foot": 0.02, "shadow": 220.0},
 	"broken_column": {"tex": "props/broken_column.png", "h": 220.0, "r": 44.0, "foot": 0.12, "shadow": 190.0},
 	"brazier": {"tex": "props/brazier.png", "h": 120.0, "r": 34.0, "foot": 0.03, "shadow": 110.0},
@@ -81,7 +82,7 @@ const LAYOUTS := {
 		["broken_column", -0.76, 0.0], ["urns", 0.76, 0.0], ["skulls", -0.2, -0.66], ["pillar", 0.24, -0.62],
 	],
 	"sable": [
-		["statue_sable", -0.48, -0.42], ["pillar", 0.0, -0.36],
+		["statue_sable", -0.48, -0.42], ["pillar", -0.64, 0.26],
 		["broken_column", -0.36, 0.08], ["broken_column", 0.36, 0.08],
 		["brazier", -0.62, -0.16], ["brazier", 0.62, -0.16], ["brazier", -0.26, 0.5], ["brazier", 0.26, 0.5],
 		["urns", 0.5, -0.4], ["skulls", 0.72, 0.1],
@@ -120,6 +121,7 @@ var _ysorted: Array = []     ## props living in the lead's y-sorted layer
 var _halos: Array = []       ## [Node2D, base_scale, phase, base_alpha]
 var _swingers: Array = []    ## [Node2D pivot, phase]
 var _silhouettes: Array = [] ## Node2D (fade near camera)
+var _occluders: Array = []   ## [Node2D, half width, height] tall props that fade when the focus is behind them
 var _cam_followers: Array = [] ## particle emitters that follow the camera
 var _rng := RandomNumberGenerator.new()
 
@@ -293,6 +295,7 @@ func _clear() -> void:
 	_halos.clear()
 	_swingers.clear()
 	_silhouettes.clear()
+	_occluders.clear()
 	_cam_followers.clear()
 	_wall_mats.clear()
 	_lights_a.clear()
@@ -462,12 +465,12 @@ func _build_floor() -> void:
 	_floor_mat.set_shader_parameter("iso", Vector2(104.0, 104.0 * half.y / half.x))
 	_floor_mat.set_shader_parameter("half_size", vhalf)
 	_floor_mat.set_shader_parameter("inset", 0.004 if throne else 0.006)
-	_floor_mat.set_shader_parameter("seam_color", Color(0.55, 0.42, 0.22, 0.6) if throne else Color(0.85, 0.66, 0.3, 0.8))
+	_floor_mat.set_shader_parameter("seam_color", Color(0.55, 0.42, 0.22, 0.35) if throne else Color(0.85, 0.66, 0.3, 0.8))
 	_floor_mat.set_shader_parameter("seam_width", 0.006 if throne else 0.013)
 	_floor_mat.set_shader_parameter("seam_ink", 0.008)
-	_floor_mat.set_shader_parameter("tint", theme["tint"])
+	_floor_mat.set_shader_parameter("tint", Color(1.3, 1.2, 1.35) if throne else theme["tint"])
 	_floor_mat.set_shader_parameter("grime", Color(0.12, 0.08, 0.16, 1.0) if throne else Color(0.09, 0.15, 0.1, 1.0))
-	_floor_mat.set_shader_parameter("ambient", 0.72 if throne else 0.7)
+	_floor_mat.set_shader_parameter("ambient", 0.95 if throne else 0.7)
 	var sc := Vector2(0, -half.y * 0.02)
 	var sr := 470.0
 	if theme_id == "mireth":
@@ -624,11 +627,11 @@ func _build_layout() -> void:
 	_prop("pillar_big", Vector2(vhalf.x - 30.0, -10.0))
 	if _has_gate:
 		var k := 290.0
-		_prop("pillar", Vector2(-k, -vhalf.y + k * vhalf.y / vhalf.x + 6.0))
-		_prop("pillar", Vector2(k, -vhalf.y + k * vhalf.y / vhalf.x + 6.0))
+		_prop("pillar_frame", Vector2(-k, -vhalf.y + k * vhalf.y / vhalf.x + 6.0))
+		_prop("pillar_frame", Vector2(k, -vhalf.y + k * vhalf.y / vhalf.x + 6.0))
 	else:
-		_prop("pillar", Vector2(-330, -vhalf.y + 330.0 * vhalf.y / vhalf.x + 6.0))
-		_prop("pillar", Vector2(330, -vhalf.y + 330.0 * vhalf.y / vhalf.x + 6.0))
+		_prop("pillar_frame", Vector2(-330, -vhalf.y + 330.0 * vhalf.y / vhalf.x + 6.0))
+		_prop("pillar_frame", Vector2(330, -vhalf.y + 330.0 * vhalf.y / vhalf.x + 6.0))
 	for e in LAYOUTS[theme_id]:
 		_prop(e[0], _uv(e[1], e[2]))
 	# lanterns hanging from the vault
@@ -659,6 +662,8 @@ func _prop(kind: String, pos: Vector2) -> Node2D:
 	if _rng.randf() < 0.5 and kind in ["urns", "skulls", "broken_column", "crystals", "brazier"]:
 		s.scale.x = -sc
 	root.add_child(s)
+	if floor_key == "throne" and kind.begins_with("pillar"):
+		s.modulate = Color(0.78, 0.66, 0.95) # violet-stained marble in the Regent's hall
 	var r: float = d["r"]
 	var inside := absf(pos.x) / half.x + absf(pos.y) / half.y < 1.05
 	if r > 0.0 and inside:
@@ -682,6 +687,8 @@ func _prop(kind: String, pos: Vector2) -> Node2D:
 			_halo(root, Vector2(d["h"] * 0.05, -d["h"] * 0.25), 220.0, Color(0.4, 0.9, 1.0), 0.35)
 	if kind.begins_with("statue") and theme_id != "oriel":
 		_add_light(pos + Vector2(0, 30), theme["sigil_color"], 260.0, 0.35, 0.0)
+	if d["h"] >= 200.0:
+		_occluders.append([root, tex.get_width() * sc * 0.42, float(d["h"])])
 	_ysorted.append(root)
 	add_child(root)
 	return root
@@ -700,7 +707,7 @@ func _fire(parent: Node2D, at: Vector2, size: Vector2, intensity: float) -> void
 	m.set_shader_parameter("mid", fc[1])
 	m.set_shader_parameter("outer", fc[2])
 	m.set_shader_parameter("seed", _rng.randf())
-	m.set_shader_parameter("intensity", 1.25 * intensity)
+	m.set_shader_parameter("intensity", 1.0 * intensity)
 	f.material = m
 	parent.add_child(f)
 	_halo(parent, at + Vector2(0, -size.y * 0.25), size.x * 4.2, fc[1], 0.55)
@@ -965,6 +972,11 @@ func _process(delta: float) -> void:
 		cpos = cam.get_screen_center_position()
 	if _backdrop:
 		_backdrop.position = cpos * 0.86
+		var vs := get_viewport_rect().size
+		var z := cam.zoom if cam else Vector2.ONE
+		var ts := _backdrop.texture.get_size()
+		var need := maxf(vs.x / z.x / ts.x, vs.y / z.y / ts.y) * 1.4
+		_backdrop.scale = Vector2.ONE * maxf(need, 1.2)
 	for f in _cam_followers:
 		if is_instance_valid(f):
 			f.position = cpos if f.z_index > 0 else Vector2(cpos.x, f.position.y)
@@ -979,6 +991,13 @@ func _process(delta: float) -> void:
 		var p: Node2D = s[0]
 		if is_instance_valid(p):
 			p.rotation = sin(t * 0.9 + s[1]) * 0.035
+	# tall props turn translucent while the focus (camera follows the heroes) is behind them
+	var focus := cpos + Vector2(0, 50)
+	for o in _occluders:
+		var n: Node2D = o[0]
+		if is_instance_valid(n):
+			var behind: bool = focus.y < n.position.y - 10.0 and focus.y > n.position.y - o[2] and absf(focus.x - n.position.x) < o[1] + 50.0
+			n.modulate.a = move_toward(n.modulate.a, 0.45 if behind else 1.0, delta * 4.0)
 	# foreground silhouettes fade when they cover the middle of the view
 	for s in _silhouettes:
 		if is_instance_valid(s):

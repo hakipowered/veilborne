@@ -108,7 +108,12 @@ static func _load(id: String) -> Dictionary:
 		var ev := {}
 		var src_ev: Dictionary = a.get("events", {})
 		for k in src_ev:
-			ev[int(src_ev[k])] = StringName(k)
+			var v = src_ev[k]
+			if v is Array:
+				for fi in v:
+					ev[int(fi)] = StringName(k)
+			else:
+				ev[int(v)] = StringName(k)
 		anims[an] = {"fps": float(a["fps"]), "loop": bool(a["loop"]), "events": ev, "n": n,
 			"rects": rects, "offs": offs, "pages": pages}
 	var res := {"anims": anims, "tex": tex, "ref_h": float(raw["ref_h"])}
@@ -179,10 +184,11 @@ func get_event_frame(anim: String, event_name: String) -> int:
 	if _data.is_empty() or not _data["anims"].has(anim):
 		return -1
 	var ev: Dictionary = _data["anims"][anim]["events"]
+	var best := -1
 	for k in ev:
-		if String(ev[k]) == event_name:
-			return int(k)
-	return -1
+		if String(ev[k]) == event_name and (best < 0 or int(k) < best):
+			best = int(k)
+	return best
 
 
 ## seconds from anim start until the named event fires, or -1

@@ -16,6 +16,7 @@
   "cam_size": 2.7,
   "center_y": 0.9,
   "elev": 40,
+  "height_m": 1.72,
   "props": [
    {
     "type": "crescent",
@@ -66,8 +67,10 @@
     "fps": 13,
     "loop": true,
     "events": {
-     "step": 0,
-     "step2": 4
+     "step": [
+      0,
+      4
+     ]
     }
    },
    "attack1": {
@@ -187,6 +190,272 @@
     "frames": 12,
     "fps": 14,
     "loop": false
+   }
+  }
+ },
+ "kaela": {
+  "model": "res://tools/anim/fbx_tmp/k_a0.fbx",
+  "clip_files": [
+   "res://tools/anim/fbx_tmp/k_a0.fbx",
+   "res://tools/anim/fbx_tmp/k_a1.fbx",
+   "res://tools/anim/fbx_tmp/k_a2.fbx",
+   "res://tools/anim/fbx_tmp/k_a3.fbx",
+   "res://tools/anim/fbx_tmp/k_a5.fbx",
+   "res://tools/anim/fbx_tmp/k_a7.fbx",
+   "res://tools/anim/fbx_tmp/k_a8.fbx",
+   "res://tools/anim/fbx_tmp/k_run.fbx",
+   "res://tools/anim/fbx_tmp/l_a6.fbx"
+  ],
+  "up_axis": 2,
+  "cell": 352,
+  "ss": 2,
+  "cam_size": 3.5,
+  "center_y": 0.9,
+  "elev": 40,
+  "height_m": 1.75,
+  "props": [
+   {
+    "type": "spear",
+    "bone": "RightHand",
+    "pos": [
+     0,
+     0.08,
+     0
+    ],
+    "rot": [
+     90,
+     0,
+     0
+    ]
+   }
+  ],
+  "anims": {
+   "idle": {
+    "clip": "Combat_Stance",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 6,
+    "loop": true,
+    "yaw": 0
+   },
+   "run": {
+    "clip": "running",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 13,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "attack1": {
+    "yaw": 0,
+    "clip": "Thrust_Slash",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 8,
+    "times": [
+     0.1,
+     0.136,
+     0.1885,
+     0.25,
+     0.2721,
+     0.2902,
+     0.3035,
+     0.31
+    ],
+    "fps": 18,
+    "loop": false,
+    "events": {
+     "hit": 3
+    }
+   },
+   "attack2": {
+    "yaw": 0,
+    "clip": "Weapon_Combo_2",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 8,
+    "times": [
+     0.06,
+     0.0922,
+     0.1392,
+     0.1942,
+     0.255,
+     0.2765,
+     0.2922,
+     0.3
+    ],
+    "fps": 18,
+    "loop": false,
+    "events": {
+     "hit": 4
+    }
+   },
+   "attack3": {
+    "yaw": 0,
+    "clip": "Charged_Slash",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 11,
+    "times": [
+     0.25,
+     0.2846,
+     0.3351,
+     0.3941,
+     0.4595,
+     0.53,
+     0.581,
+     0.6249,
+     0.6608,
+     0.6871,
+     0.7
+    ],
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 5
+    }
+   },
+   "special": {
+    "yaw": 0,
+    "clip": "Charged_Ground_Slam",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 13,
+    "times": [
+     0.06,
+     0.1,
+     0.13,
+     0.17,
+     0.3,
+     0.45,
+     0.5,
+     0.53,
+     0.56,
+     0.59,
+     0.62,
+     0.66,
+     0.72
+    ],
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 9
+    }
+   },
+   "dash": {
+    "clip": "Quick_Step",
+    "from": 0.05,
+    "to": 0.95,
+    "frames": 7,
+    "fps": 16,
+    "loop": false
+   },
+   "hurt": {
+    "clip": "Hit_Reaction",
+    "from": 0.0,
+    "to": 0.4,
+    "frames": 5,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "clip": "Dead",
+    "from": 0.0,
+    "to": 0.7,
+    "frames": 12,
+    "fps": 14,
+    "loop": false
+   }
+  }
+ },
+ "shade": {
+  "model": "shade/model.glb",
+  "procedural": "res://tools/anim/proc_shade.gd",
+  "height_m": 1.8,
+  "cell": 256,
+  "ss": 2,
+  "cam_size": 3.0,
+  "center_y": 0.9,
+  "elev": 40,
+  "weight_sharp": 4.0,
+  "anims": {
+   "idle": {
+    "frames": 10,
+    "fps": 10,
+    "loop": true
+   },
+   "move": {
+    "frames": 8,
+    "fps": 12,
+    "loop": true
+   },
+   "windup": {
+    "frames": 6,
+    "fps": 12
+   },
+   "attack": {
+    "frames": 8,
+    "fps": 16,
+    "events": {
+     "hit": 2
+    }
+   },
+   "hurt": {
+    "frames": 5,
+    "fps": 14
+   },
+   "death": {
+    "frames": 10,
+    "fps": 12
+   }
+  }
+ },
+ "spitter": {
+  "model": "spitter/model.glb",
+  "procedural": "res://tools/anim/proc_spitter.gd",
+  "height_m": 1.1,
+  "cell": 224,
+  "ss": 2,
+  "cam_size": 2.6,
+  "center_y": 0.5,
+  "elev": 40,
+  "weight_sharp": 4.0,
+  "anims": {
+   "idle": {
+    "frames": 10,
+    "fps": 10,
+    "loop": true
+   },
+   "move": {
+    "frames": 8,
+    "fps": 14,
+    "loop": true
+   },
+   "windup": {
+    "frames": 6,
+    "fps": 12
+   },
+   "attack": {
+    "frames": 7,
+    "fps": 16,
+    "events": {
+     "hit": 2
+    }
+   },
+   "hurt": {
+    "frames": 5,
+    "fps": 14
+   },
+   "death": {
+    "frames": 10,
+    "fps": 12
    }
   }
  }
