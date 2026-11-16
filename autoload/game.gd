@@ -42,6 +42,111 @@ const BOONS := [
 	{"id": "briar_ward", "patron": "sable", "name": "Briar Ward", "desc": "Take %d%% less damage.", "stat": "armor", "values": [10, 18, 25]},
 	{"id": "second_dash", "patron": "sable", "name": "Shadow Step", "desc": "+%d dash charge.", "stat": "dash_charges", "values": [1, 1, 2]},
 ]
+## ---------------------------------------------------------------- weapons
+## Weapons are separate from the heroine: any heroine can carry any weapon.
+## Damage, timing and the special's shape come from here; the heroine sets health and speed.
+## special_time: whole special pose; special_hit: when the effect is released / lands (anim hit frame is fitted to it).
+## Each weapon has 3 aspects (forms). Aspect 0 is free; others are bought with Veil Shards (Game.unlock_aspect).
+## Aspect "mods" add into hero stats (same keys as boons / forge, see hero.gd recompute_stats).
+const WEAPONS := {
+	"spear": {
+		"name": "Emberlance", "kind": "Spear", "icon": "weapon_spear", "color": Color(1.0, 0.55, 0.2),
+		"desc": "Long thrusts, a three-hit combo, and a leaping slam at the aimed point.",
+		"attack": 14.0, "special": 32.0, "cd": 0.32, "reach": 125.0, "arc": 42.0, "lunge": 260.0,
+		"special_cd": 2.6, "special_time": 0.62, "special_hit": 0.42, "special_name": "Ember Leap",
+		"swing": "swing_spear", "cast": "special_ember",
+		"aspects": [
+			{"name": "Aspect of Cinders", "desc": "The lance as it was forged. Balanced reach and fire.", "cost": 0, "mods": {}},
+			{"name": "Aspect of the Comet", "desc": "Ember Leap flies 35% farther and its blast is 30% wider.", "cost": 40, "mods": {"w_range": 35, "w_area": 30}},
+			{"name": "Aspect of the Pyre", "desc": "Every strike sets foes ablaze, and the leap leaves burning ground.", "cost": 80, "mods": {"burn": 6, "w_pool": 12}},
+		],
+	},
+	"twin": {
+		"name": "Moonfang Blades", "kind": "Twin Blades", "icon": "weapon_twin", "color": Color(0.7, 0.85, 1.0),
+		"desc": "Fast wide slashes. The special hurls a crescent that whirls at the aimed point.",
+		"attack": 9.0, "special": 26.0, "cd": 0.2, "reach": 100.0, "arc": 75.0, "lunge": 200.0,
+		"special_cd": 2.6, "special_time": 0.5, "special_hit": 0.33, "special_name": "Crescent Throw",
+		"swing": "swing_blades", "cast": "special_moon",
+		"aspects": [
+			{"name": "Aspect of Moonfall", "desc": "Swift and true. No twist.", "cost": 0, "mods": {}},
+			{"name": "Aspect of Eclipse", "desc": "Throw two crescents at once, and +10% critical chance.", "cost": 40, "mods": {"w_multi": 1, "crit": 10}},
+			{"name": "Aspect of Tidewane", "desc": "+1 dash charge, and every dash slashes foes it passes.", "cost": 80, "mods": {"dash_charges": 1, "w_dash_strike": 20}},
+		],
+	},
+	"bow": {
+		"name": "Starwhisper Bow", "kind": "Bow", "icon": "weapon_bow", "color": Color(1.0, 0.9, 0.55),
+		"desc": "Tap to loose an arrow, hold to draw a piercing charged shot. The special rains a volley on the aimed point.",
+		"attack": 11.0, "special": 14.0, "cd": 0.26, "reach": 0.0, "arc": 0.0, "lunge": 0.0,
+		"special_cd": 2.8, "special_time": 0.5, "special_hit": 0.33, "special_name": "Starfall Volley",
+		"swing": "swing_blades", "cast": "special_moon",
+		"aspects": [
+			{"name": "Aspect of the Huntress", "desc": "Steady draw, steady aim. No twist.", "cost": 0, "mods": {}},
+			{"name": "Aspect of Starfall", "desc": "The volley falls on a 40% wider area and lands one more wave.", "cost": 40, "mods": {"w_area": 40, "w_pulses": 1}},
+			{"name": "Aspect of the Gale", "desc": "Draw 35% faster, and fully drawn shots pierce every foe.", "cost": 80, "mods": {"w_charge": 35, "w_pierce": 20}},
+		],
+	},
+	"shield": {
+		"name": "Aegis of Dawn", "kind": "Shield", "icon": "weapon_shield", "color": Color(1.0, 0.8, 0.4),
+		"desc": "Heavy bashes; the third strike is a charging rush. The special throws the shield at the aimed point.",
+		"attack": 13.0, "special": 26.0, "cd": 0.36, "reach": 100.0, "arc": 60.0, "lunge": 180.0,
+		"special_cd": 2.6, "special_time": 0.48, "special_hit": 0.3, "special_name": "Aegis Throw",
+		"swing": "swing_spear", "cast": "special_ember",
+		"aspects": [
+			{"name": "Aspect of the Bulwark", "desc": "Thrown shield ricochets between foes and returns. You take 10% less damage.", "cost": 0, "mods": {"armor": 10}},
+			{"name": "Aspect of Rebound", "desc": "The thrown shield ricochets to 2 more foes.", "cost": 40, "mods": {"w_ricochet": 2}},
+			{"name": "Aspect of the Bastion", "desc": "The thrown shield lodges at the aimed point, spinning for 2.5 s and grinding all around it, then returns.", "cost": 80, "mods": {"w_anchor": 2.5}},
+		],
+	},
+	"scythe": {
+		"name": "Gravechain Scythe", "kind": "Chain Scythe", "icon": "weapon_scythe", "color": Color(0.78, 0.5, 1.0),
+		"desc": "Sweeping arcs on a long chain; the finisher yanks foes in. The special hurls a vortex that drags enemies to the aimed point.",
+		"attack": 12.0, "special": 12.0, "cd": 0.4, "reach": 150.0, "arc": 150.0, "lunge": 120.0,
+		"special_cd": 3.0, "special_time": 0.52, "special_hit": 0.34, "special_name": "Reaping Vortex",
+		"swing": "swing_blades", "cast": "special_moon",
+		"aspects": [
+			{"name": "Aspect of the Gravewarden", "desc": "Wide reaping arcs. No twist.", "cost": 0, "mods": {}},
+			{"name": "Aspect of the Tollkeeper", "desc": "Every hit drags foes toward you, and kills heal 2.", "cost": 40, "mods": {"w_yank": 1, "lifesteal": 2}},
+			{"name": "Aspect of the Hollow Moon", "desc": "The vortex ends in a detonation for double damage on a 30% wider area.", "cost": 80, "mods": {"w_detonate": 100, "w_area": 30}},
+		],
+	},
+}
+const WEAPON_ORDER := ["spear", "twin", "bow", "shield", "scythe"]
+
+## In-run weapon upgrades from the Forge reward. Stored per hero in boons["_forge"] = {id: {level, rarity}}.
+const FORGE := [
+	{"id": "spear_echo", "weapon": "spear", "name": "Echo Leap", "desc": "Ember Leap slams a second time for %d%% damage.", "stat": "w_twice", "values": [50, 75, 100]},
+	{"id": "spear_comet", "weapon": "spear", "name": "Comet Thrust", "desc": "Each dash ends in a spear thrust for %d damage.", "stat": "w_dash_strike", "values": [18, 28, 40]},
+	{"id": "spear_haft", "weapon": "spear", "name": "Long Haft", "desc": "Thrusts reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40]},
+	{"id": "spear_cinder", "weapon": "spear", "name": "Trail of Cinders", "desc": "Ember Leap leaves burning ground (%d damage/sec).", "stat": "w_pool", "values": [10, 16, 24]},
+	{"id": "twin_wane", "weapon": "twin", "name": "Lingering Moon", "desc": "The crescent whirls %d%% longer.", "stat": "w_whirl", "values": [40, 70, 100]},
+	{"id": "twin_home", "weapon": "twin", "name": "Homeward Crescent", "desc": "The crescent flies back to you, cutting for %d%% damage.", "stat": "w_return", "values": [60, 90, 130]},
+	{"id": "twin_step", "weapon": "twin", "name": "Moonlit Step", "desc": "Dashing slashes foes you pass for %d.", "stat": "w_dash_strike", "values": [14, 22, 32]},
+	{"id": "twin_quick", "weapon": "twin", "name": "Quickened Edges", "desc": "Attack %d%% faster.", "stat": "w_speed", "values": [12, 20, 30]},
+	{"id": "bow_pierce", "weapon": "bow", "name": "Piercing Fletch", "desc": "Arrows pierce %d more foes.", "stat": "w_pierce", "values": [1, 2, 3]},
+	{"id": "bow_split", "weapon": "bow", "name": "Split Shot", "desc": "Fully drawn shots split into %d extra arrows.", "stat": "w_split", "values": [2, 2, 4]},
+	{"id": "bow_draw", "weapon": "bow", "name": "Quick Draw", "desc": "Draw %d%% faster.", "stat": "w_charge", "values": [25, 40, 60]},
+	{"id": "bow_rain", "weapon": "bow", "name": "Endless Rain", "desc": "The volley lands %d more waves.", "stat": "w_pulses", "values": [1, 2, 3]},
+	{"id": "shield_rebound", "weapon": "shield", "name": "Rebound Rim", "desc": "The thrown shield ricochets to %d more foes.", "stat": "w_ricochet", "values": [1, 2, 3]},
+	{"id": "shield_anchor", "weapon": "shield", "name": "Anchored Aegis", "desc": "The thrown shield lodges at the aimed point and spins there for %.1f s.", "stat": "w_anchor", "values": [1.5, 2.0, 2.5]},
+	{"id": "shield_rush", "weapon": "shield", "name": "Vanguard Rush", "desc": "The rushing third strike deals +%d%% damage and goes farther.", "stat": "w_rush", "values": [40, 70, 100]},
+	{"id": "shield_guard", "weapon": "shield", "name": "Sunlit Guard", "desc": "Take %d%% less damage.", "stat": "armor", "values": [6, 10, 15]},
+	{"id": "scythe_chain", "weapon": "scythe", "name": "Longer Chain", "desc": "Sweeps reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40]},
+	{"id": "scythe_hook", "weapon": "scythe", "name": "Hooked Edge", "desc": "Every sweep drags foes toward you (+%d pull).", "stat": "w_yank", "values": [1, 1, 2]},
+	{"id": "scythe_maw", "weapon": "scythe", "name": "Hungry Maw", "desc": "The vortex lasts %d%% longer and pulls harder.", "stat": "w_whirl", "values": [40, 70, 100]},
+	{"id": "scythe_soul", "weapon": "scythe", "name": "Soulreap", "desc": "Heal %d for each foe the vortex catches.", "stat": "w_soul", "values": [1, 2, 3]},
+]
+## Rewards offered on the exits of a cleared chamber (granted when the NEXT chamber is cleared).
+const REWARDS := {
+	"boon": {"name": "Warden's Boon", "icon": "reward_boon", "color": Color(0.85, 0.6, 1.0), "weight": 34},
+	"forge": {"name": "Forge", "icon": "reward_forge", "color": Color(1.0, 0.6, 0.25), "weight": 26},
+	"heal": {"name": "Healing Chalice", "icon": "reward_heal", "color": Color(1.0, 0.35, 0.4), "weight": 14},
+	"shards": {"name": "Veil Shards", "icon": "shard", "color": Color(0.6, 0.85, 1.0), "weight": 14},
+	"gold": {"name": "Gilded Coin", "icon": "reward_gold", "color": Color(1.0, 0.85, 0.35), "weight": 12},
+}
+const REWARD_HEAL_FRAC := 0.35
+const REWARD_SHARDS := 15
+const REWARD_GOLD := 40
+
 const RARITY_NAMES := ["Common", "Rare", "Epic"]
 const RARITY_COLORS := [Color(0.85, 0.85, 0.85), Color(0.35, 0.6, 1.0), Color(0.8, 0.4, 1.0)]
 
@@ -63,6 +168,10 @@ var run_room := 0
 var run_seed := 0
 var run_shards := 0
 var hero_runtime := {} ## key -> {hp, boons} carried between rooms
+var run_gold := 0 ## run currency for a future shop
+## Weapon + aspect chosen before a run ("" = the heroine's default weapon).
+var run_weapon := ""
+var run_aspect := 0
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
@@ -78,6 +187,7 @@ func default_save() -> Dictionary:
 		"last_played": "", "intro_seen": false, "story_chapter": 0,
 		"shards": 0, "meta": {}, "runs": 0, "wins": 0, "best_room": 0,
 		"last_hero": "kaela", "codex": [],
+		"last_weapon": "", "last_aspect": 0, "aspects": {},
 		# --- STORY (owned by data/story_db.gd; see StoryDB.default_progress) ---
 		"story": {"flags": {}, "played": {}, "last_death_by": "", "chapter_reached": 0, "bosses_beaten": {}, "gifts": {}},
 		# --- end STORY ---
@@ -101,6 +211,7 @@ func load_slot(m: String, s: int) -> void:
 	for k in d.keys():
 		if not data.has(k):
 			data[k] = d[k]
+	set_loadout(String(data.get("last_weapon", "")), int(data.get("last_aspect", 0)))
 	save_slot()
 
 func save_slot() -> void:
@@ -135,6 +246,7 @@ func start_run(seed_value: int) -> void:
 	run_room = 0
 	run_seed = seed_value
 	run_shards = 0
+	run_gold = 0
 	hero_runtime.clear()
 	data["runs"] += 1
 	save_slot()
@@ -172,3 +284,113 @@ func roll_boons(rng: RandomNumberGenerator, owned: Dictionary, count := 3) -> Ar
 func boon_text(id: String, rarity: int) -> String:
 	var b := boon_by_id(id)
 	return b["desc"] % b["values"][rarity]
+
+
+# ---------------------------------------------------------------- weapons / aspects / forge
+
+func default_weapon(hero_id: String) -> String:
+	return String(HEROES.get(hero_id, HEROES["kaela"])["weapon"])
+
+## Weapon for this device's player 1 (falls back to the heroine's default).
+func weapon_for(hero_id: String) -> String:
+	if run_weapon != "" and WEAPONS.has(run_weapon):
+		return run_weapon
+	return default_weapon(hero_id)
+
+func set_loadout(weapon: String, aspect: int) -> void:
+	if not WEAPONS.has(weapon):
+		weapon = ""
+	run_weapon = weapon
+	run_aspect = aspect if weapon != "" and aspect_unlocked(weapon, aspect) else 0
+	if not data.is_empty():
+		data["last_weapon"] = run_weapon
+		data["last_aspect"] = run_aspect
+
+func aspect_unlocked(weapon: String, aspect: int) -> bool:
+	if aspect <= 0:
+		return true
+	if data.is_empty():
+		return false
+	var a: Array = data.get("aspects", {}).get(weapon, [])
+	return a.has(aspect)
+
+func aspect_cost(weapon: String, aspect: int) -> int:
+	var w: Dictionary = WEAPONS.get(weapon, {})
+	var list: Array = w.get("aspects", [])
+	if aspect < 0 or aspect >= list.size():
+		return 0
+	return int(list[aspect]["cost"])
+
+## Spends Veil Shards to unlock an aspect. Returns true when newly unlocked.
+func unlock_aspect(weapon: String, aspect: int) -> bool:
+	if not WEAPONS.has(weapon) or aspect_unlocked(weapon, aspect) or data.is_empty():
+		return false
+	var cost := aspect_cost(weapon, aspect)
+	if int(data.get("shards", 0)) < cost:
+		return false
+	data["shards"] = int(data["shards"]) - cost
+	if not data.has("aspects") or not (data["aspects"] is Dictionary):
+		data["aspects"] = {}
+	var a: Array = data["aspects"].get(weapon, [])
+	a.append(aspect)
+	data["aspects"][weapon] = a
+	save_slot()
+	return true
+
+func aspect_def(weapon: String, aspect: int) -> Dictionary:
+	var list: Array = WEAPONS.get(weapon, {}).get("aspects", [])
+	if list.is_empty():
+		return {}
+	return list[clampi(aspect, 0, list.size() - 1)]
+
+func forge_by_id(id: String) -> Dictionary:
+	for f in FORGE:
+		if f["id"] == id:
+			return f
+	return {}
+
+func forge_text(id: String, rarity: int) -> String:
+	var f := forge_by_id(id)
+	if f.is_empty():
+		return ""
+	return f["desc"] % f["values"][clampi(rarity, 0, 2)]
+
+## owned: hero.boons["_forge"] (id -> {level, rarity}).
+func roll_forge(rng: RandomNumberGenerator, weapon: String, owned: Dictionary, count := 3) -> Array:
+	var pool := []
+	for f in FORGE:
+		if f["weapon"] == weapon:
+			pool.append(f)
+	var out := []
+	while out.size() < count and pool.size() > 0:
+		var f: Dictionary = pool.pop_at(rng.randi_range(0, pool.size() - 1))
+		var r := 0
+		var roll := rng.randf()
+		if roll > 0.88: r = 2
+		elif roll > 0.6: r = 1
+		var lvl: int = owned.get(f["id"], {}).get("level", 0)
+		out.append({"id": f["id"], "rarity": r, "upgrade": lvl > 0, "forge": true})
+	return out
+
+## Two different reward types for the exits out of chamber `room` (deterministic: same on every device).
+## One exit always carries power (a boon or the forge); the other is drawn from the rest by weight.
+func roll_door_rewards(room: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("doors:%d:%d" % [run_seed, room])
+	var first := "forge" if rng.randf() < 0.45 else "boon"
+	var out := [first]
+	var total := 0
+	for k in REWARDS.keys():
+		if k != first:
+			total += int(REWARDS[k]["weight"])
+	var pick := rng.randi_range(0, total - 1)
+	for k in REWARDS.keys():
+		if k == first:
+			continue
+		pick -= int(REWARDS[k]["weight"])
+		if pick < 0:
+			out.append(k)
+			break
+	if rng.randf() < 0.5:
+		out.reverse()
+	return out
