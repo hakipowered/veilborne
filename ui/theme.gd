@@ -183,10 +183,11 @@ void fragment() {
 const _FADE_BOTTOM_SHADER := """
 shader_type canvas_item;
 uniform float fade_start = 0.72;
+uniform float fade_end = 1.0;
 uniform float dim = 1.0;
 void fragment() {
 	vec4 c = texture(TEXTURE, UV) * COLOR;
-	c.a *= 1.0 - smoothstep(fade_start, 1.0, UV.y);
+	c.a *= 1.0 - smoothstep(fade_start, fade_end, UV.y);
 	c.rgb *= dim;
 	COLOR = c;
 }
@@ -200,9 +201,12 @@ static func material(kind: String) -> ShaderMaterial:
 	match kind:
 		"circle": sh.code = _CIRCLE_SHADER
 		"shine": sh.code = _SHINE_SHADER
-		"fade_bottom": sh.code = _FADE_BOTTOM_SHADER
+		"fade_bottom", "fade_full": sh.code = _FADE_BOTTOM_SHADER
 	var m := ShaderMaterial.new()
 	m.shader = sh
+	if kind == "fade_full":
+		m.set_shader_parameter("fade_start", 0.44)
+		m.set_shader_parameter("fade_end", 0.66)
 	_mats[kind] = m
 	return m
 

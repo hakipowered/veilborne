@@ -76,14 +76,40 @@ func _run() -> void:
 			env.set_door_open(true)
 			await _shot("room%d_door_open" % i, 2.6)
 		else:
+			cam.position = Vector2(0, -420)
+			await _shot("room%d_throne" % i, 0.4)
 			env.set_door_open(true)
 			cam.position = Vector2(0, -60)
 			await _shot("room%d_cleared" % i, 1.4)
+	for i in rooms:
+		_build(i)
+		cam.zoom = Vector2(0.42, 0.42)
+		cam.position = Vector2(0, -250)
+		await _shot("room%d_overview" % i, 0.8)
+		cam.zoom = Vector2(1.1, 1.1)
 	if bench:
 		await _bench()
 	get_tree().quit()
 
 func _bench() -> void:
+	# baseline: the old single painted JPG floor scaled 1.6x (what arena.gd draws today)
+	env.build("catacomb", 0, 1)
+	env.visible = false
+	for p in env._ysorted: p.visible = false
+	env._vignette.visible = false
+	var old := Sprite2D.new()
+	old.texture = load("res://art/floor_catacomb.jpg")
+	old.scale = Vector2.ONE * 1.6
+	add_child(old)
+	move_child(old, 0)
+	await get_tree().create_timer(0.5).timeout
+	var t0 := Time.get_ticks_usec()
+	for f in range(240):
+		cam.position = Vector2(sin(f * 0.03) * 600.0, 0)
+		await get_tree().process_frame
+	print("BENCH baseline_old_floor avg_frame_ms=%.2f" % ((Time.get_ticks_usec() - t0) / 1000.0 / 240.0))
+	old.queue_free()
+	env.visible = true
 	for i in [0, 4]:
 		_build(i)
 		var ys := [env.get_player_start().y, 0.0, -300.0]

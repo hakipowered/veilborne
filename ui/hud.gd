@@ -1,104 +1,159 @@
 extends CanvasLayer
-## In-run HUD: health, dash pips, special cooldown, boons, boss bar, banners,
-## boon choice cards, pause menu and touch controls.
+## In-run HUD: heroine medallions, health, dash pips, special cooldown, boon row (+ tooltips), room banner,
+## boss bar, low-health vignette, banners, boon choice cards, pause / settings, touch controls.
+## Public API used by arena.gd: add_local_hero, build, refresh, set_room_name, float_banner,
+## show_boon_choice(hero, choices, on_pick), touch, boon_panel, arena, _toggle_pause.
 
 const TouchScript := preload("res://ui/touch.gd")
+const VTheme = preload("res://ui/theme.gd")
+const Settings = preload("res://ui/settings.gd")
+const StoryData = preload("res://data/story.gd")
 const GOLD := Color(1.0, 0.82, 0.4)
 const INK := Color(0.05, 0.02, 0.06)
+const SPECIAL_CD := 2.6
+const ROW_H := 112.0
+const BAR_X := 106.0
+const LOW_HP := 0.35
 
 var arena: Node
 var local_heroes: Array = []
 var touch: Control = null
 var root: Control
 var drawer: Control
+var room_plate: PanelContainer
 var room_label: Label
-var banner: Label
-var boon_panel: PanelContainer
-var pause_panel: PanelContainer
-var _portraits: Array = []
-var _boon_labels: Array = []
-var _banner_t := 0.0
+var banner: Control
+var banner_label: Label
+var boon_panel: Control = null
+var pause_panel: Control = null
+var _boon_rows: Array = []        ## HBoxContainer per local hero
+var _tooltip: PanelContainer = null
+var _tooltip_tw: Tween
+var _vignette: TextureRect
+var _vig_tw: Tween
+var _low := false
+var _last_hp: Array = []
+var _sig := 0
+var _boss: Node = null
+var _boss_trail := 1.0
+var _hp_trail: Array = []
+var _shard_label: Label
+var _ping_label: Label
+var _font: Font
+var _font_caps: Font
+var _tex_frame: Texture2D
+var _tex_boss: Texture2D
+var _tex_shard: Texture2D
+var _tex_orb: Texture2D
+var _tex_special: Texture2D
+
 
 func _init() -> void:
 	layer = 10
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
+
 func add_local_hero(h: Node) -> void:
 	local_heroes.append(h)
 
-func _style(bg: Color, border: Color, w := 3) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.border_color = border
-	sb.set_border_width_all(w)
-	sb.set_corner_radius_all(8)
-	sb.set_content_margin_all(14)
-	sb.shadow_color = Color(0, 0, 0, 0.5)
-	sb.shadow_size = 6
-	return sb
-
-func _label(text: String, size: int, color := Color.WHITE) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_outline_color", INK)
-	l.add_theme_constant_override("outline_size", 6)
-	return l
 
 func build() -> void:
+	_font = VTheme.font("head")
+	_font_caps = VTheme.font("caps")
+	_tex_frame = VTheme.tex("hp_frame")
+	_tex_boss = VTheme.tex("boss_frame")
+	_tex_shard = VTheme.tex("shard")
+	_tex_orb = VTheme.tex("orb")
+	_tex_special = VTheme.tex("glyph_special")
 	root = Control.new()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.theme = VTheme.get_theme()
 	add_child(root)
+
+	_vignette = VTheme.image(VTheme.vignette_tex(Color(0.62, 0.0, 0.05, 1.0), 0.3), Vector2.ZERO, false)
+	_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_vignette.modulate.a = 0.0
+	root.add_child(_vignette)
+
 	drawer = Control.new()
 	drawer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	drawer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	drawer.draw.connect(_draw_bars)
 	root.add_child(drawer)
+
 	for i in range(local_heroes.size()):
 		var h: Node = local_heroes[i]
-		var tex: Texture2D = load("res://art/%s.png" % h.hero_id)
-		var at := AtlasTexture.new()
-		at.atlas = tex
-		var w := float(tex.get_width())
-		at.region = Rect2(w * 0.3, 0, w * 0.42, w * 0.42)
-		var tr := TextureRect.new()
-		tr.texture = at
-		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		tr.position = Vector2(20, 18 + i * 110)
-		tr.size = Vector2(76, 76)
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		root.add_child(tr)
-		_portraits.append(tr)
-		var bl := _label("", 15, Color(0.95, 0.9, 0.8))
-		bl.position = Vector2(108, 78 + i * 110)
-		root.add_child(bl)
-		_boon_labels.append(bl)
-	room_label = _label("", 22, GOLD)
-	room_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	room_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	room_label.position = Vector2(-300, 14)
-	room_label.size = Vector2(600, 30)
-	root.add_child(room_label)
-	banner = _label("", 44, GOLD)
+		var y := 10.0 + i * ROW_H
+		root.add_child(_medallion(String(h.hero_id), Vector2(10, y), 92.0, i))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		row.position = Vector2(BAR_X + 10, y + 74)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root.add_child(row)
+		_boon_rows.append(row)
+		_last_hp.append(float(h.hp))
+		_hp_trail.append(1.0)
+
+	# room title ribbon
+	room_plate = PanelContainer.new()
+	room_plate.theme_type_variation = "Plate"
+	room_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	room_plate.anchor_left = 0.5; room_plate.anchor_right = 0.5
+	room_plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	room_plate.offset_top = 8; room_plate.offset_bottom = 64
+	room_plate.custom_minimum_size = Vector2(320, 56)
+	room_plate.modulate.a = 0.0
+	root.add_child(room_plate)
+	room_label = VTheme.title_label("", 20, VTheme.GOLD_BRIGHT, 5)
+	room_plate.add_child(room_label)
+
+	# centre banner
+	banner = VBoxContainer.new()
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner.set_anchors_preset(Control.PRESET_CENTER)
-	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	banner.position = Vector2(-500, -160)
-	banner.size = Vector2(1000, 60)
+	banner.offset_left = -600; banner.offset_right = 600; banner.offset_top = -200; banner.offset_bottom = -90
+	banner.pivot_offset = Vector2(600, 55)
+	banner.add_theme_constant_override("separation", -6)
 	banner.modulate.a = 0.0
 	root.add_child(banner)
+	banner_label = VTheme.title_label("", 46, GOLD, 10, "display")
+	banner.add_child(banner_label)
+	banner.add_child(VTheme.divider(460, 34))
+
+	# shard purse + pause (top right)
+	var purse := HBoxContainer.new()
+	purse.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	purse.add_theme_constant_override("separation", 6)
+	purse.anchor_left = 1; purse.anchor_right = 1
+	purse.offset_left = -250; purse.offset_right = -96; purse.offset_top = 18; purse.offset_bottom = 58
+	purse.alignment = BoxContainer.ALIGNMENT_END
+	root.add_child(purse)
+	purse.add_child(VTheme.shard_icon(32))
+	_shard_label = VTheme.title_label("0", 28, VTheme.GOLD_BRIGHT, 6)
+	purse.add_child(_shard_label)
+	_ping_label = VTheme.label("", "Dim", 16)
+	_ping_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_ping_label.anchor_left = 1; _ping_label.anchor_right = 1
+	_ping_label.offset_left = -300; _ping_label.offset_right = -96; _ping_label.offset_top = 58; _ping_label.offset_bottom = 80
+	root.add_child(_ping_label)
+
 	var pause_btn := Button.new()
-	pause_btn.text = "II"
-	pause_btn.add_theme_font_size_override("font_size", 26)
-	pause_btn.add_theme_stylebox_override("normal", _style(Color(0.1, 0.05, 0.12, 0.8), GOLD, 2))
-	pause_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	pause_btn.position = Vector2(-84, 14)
-	pause_btn.size = Vector2(64, 64)
+	pause_btn.theme_type_variation = "IconButton"
+	pause_btn.anchor_left = 1; pause_btn.anchor_right = 1
+	pause_btn.offset_left = -88; pause_btn.offset_right = -14; pause_btn.offset_top = 8; pause_btn.offset_bottom = 82
 	pause_btn.focus_mode = Control.FOCUS_NONE
+	var orb := VTheme.image("orb", Vector2.ZERO, false)
+	orb.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pause_btn.add_child(orb)
+	var pg := VTheme.image("glyph_pause")
+	pg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pg.offset_left = 22; pg.offset_right = -22; pg.offset_top = 20; pg.offset_bottom = -20
+	pause_btn.add_child(pg)
+	VTheme.juice(pause_btn, 1.08, "open")
 	pause_btn.pressed.connect(_toggle_pause)
 	root.add_child(pause_btn)
+
 	if DisplayServer.is_touchscreen_available() or OS.has_feature("mobile"):
 		touch = TouchScript.new()
 		root.add_child(touch)
@@ -107,151 +162,505 @@ func build() -> void:
 				touch.hero = h
 	refresh()
 
+
+## Round portrait in a gilded ring.
+func _medallion(hid: String, pos: Vector2, size: float, idx: int) -> Control:
+	var holder := Control.new()
+	holder.position = pos
+	holder.size = Vector2(size, size)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var face := VTheme.image(VTheme.tex("face_" + hid), Vector2.ZERO, false)
+	face.position = Vector2(size * 0.1, size * 0.1)
+	face.size = Vector2(size * 0.8, size * 0.8)
+	holder.add_child(face)
+	var ring := VTheme.image("ring", Vector2.ZERO, false)
+	ring.size = Vector2(size, size)
+	holder.add_child(ring)
+	if local_heroes.size() > 1:
+		var tag := VTheme.title_label("P%d" % (idx + 1), 16, VTheme.GOLD_BRIGHT, 5)
+		tag.position = Vector2(0, size - 22)
+		tag.size = Vector2(size, 22)
+		holder.add_child(tag)
+	return holder
+
+
 func refresh() -> void:
-	for i in range(min(local_heroes.size(), _boon_labels.size())):
+	for i in range(min(local_heroes.size(), _boon_rows.size())):
 		var h: Node = local_heroes[i]
+		var row: HBoxContainer = _boon_rows[i]
 		if not is_instance_valid(h):
 			continue
-		var names: Array = []
+		for c in row.get_children():
+			c.queue_free()
 		for id in h.boons.keys():
 			if String(id).begins_with("_"):
 				continue
-			var b := Game.boon_by_id(id)
-			names.append("%s %s" % [b.get("name", id), "I".repeat(int(h.boons[id]["level"]))])
-		_boon_labels[i].text = "  ·  ".join(names)
+			var info: Dictionary = h.boons[id]
+			row.add_child(_boon_chip(String(id), int(info.get("level", 1)), int(info.get("rarity", 0))))
+
+
+func _boon_chip(id: String, level: int, rarity: int) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(42, 42)
+	c.mouse_filter = Control.MOUSE_FILTER_STOP
+	var ring := Panel.new()
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ring.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var rc: Color = Game.RARITY_COLORS[clampi(rarity, 0, 2)]
+	var sb := VTheme.box(Color(0.06, 0.03, 0.07, 0.85), rc.lerp(VTheme.GOLD, 0.35), 2, 21, 4, Color(0, 0, 0, 0.5), 0, 0)
+	ring.add_theme_stylebox_override("panel", sb)
+	c.add_child(ring)
+	var ic := VTheme.image(VTheme.boon_icon(id), Vector2.ZERO, false)
+	ic.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ic.offset_left = 3; ic.offset_top = 3; ic.offset_right = -3; ic.offset_bottom = -3
+	c.add_child(ic)
+	if level > 1:
+		var lv := VTheme.title_label(VTheme.roman(level), 13, VTheme.GOLD_BRIGHT, 4)
+		lv.position = Vector2(20, 26)
+		lv.size = Vector2(24, 16)
+		c.add_child(lv)
+	c.gui_input.connect(func(e: InputEvent):
+		if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
+			c.accept_event()
+			_show_tooltip(id, level, rarity, c))
+	return c
+
+
+func _show_tooltip(id: String, level: int, rarity: int, at: Control) -> void:
+	if is_instance_valid(_tooltip):
+		_tooltip.queue_free()
+	var b := Game.boon_by_id(id)
+	var pat: Dictionary = Game.PATRONS.get(b.get("patron", ""), {})
+	var t := PanelContainer.new()
+	t.theme_type_variation = "PanelSm"
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	t.custom_minimum_size = Vector2(330, 0)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	t.add_child(v)
+	var n := VTheme.label("%s %s" % [b.get("name", id), VTheme.roman(level)], "Gold", 22)
+	v.add_child(n)
+	var r := VTheme.label("%s  ·  %s" % [String(Game.RARITY_NAMES[rarity]).to_upper(), String(pat.get("name", "")).to_upper()], "Caps", 13)
+	r.add_theme_color_override("font_color", Game.RARITY_COLORS[rarity])
+	v.add_child(r)
+	var d := VTheme.label(Game.boon_text(id, rarity), "Body", 19)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size = Vector2(270, 0)
+	v.add_child(d)
+	root.add_child(t)
+	t.position = at.global_position + Vector2(-8, 50)
+	_tooltip = t
+	t.modulate.a = 0.0
+	if _tooltip_tw and _tooltip_tw.is_valid():
+		_tooltip_tw.kill()
+	_tooltip_tw = t.create_tween()
+	_tooltip_tw.tween_property(t, "modulate:a", 1.0, 0.15)
+	_tooltip_tw.tween_interval(2.6)
+	_tooltip_tw.tween_property(t, "modulate:a", 0.0, 0.3)
+	_tooltip_tw.tween_callback(t.queue_free)
+	VTheme.sound("hover")
+
 
 func set_room_name(t: String) -> void:
-	if room_label:
-		room_label.text = t
+	if room_label == null:
+		return
+	room_label.text = t
+	room_plate.visible = true
+	room_plate.position.y = -40
+	room_plate.modulate.a = 0.0
+	var tw := room_plate.create_tween().set_parallel()
+	tw.tween_property(room_plate, "position:y", 8.0, 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(room_plate, "modulate:a", 1.0, 0.3)
+
 
 func float_banner(text: String, color: Color) -> void:
 	if banner == null:
 		return
-	banner.text = text
-	banner.add_theme_color_override("font_color", color)
-	banner.modulate.a = 1.0
-	banner.scale = Vector2(1.15, 1.15)
-	banner.pivot_offset = banner.size / 2
-	var tw := create_tween()
-	tw.tween_property(banner, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_interval(1.4)
-	tw.tween_property(banner, "modulate:a", 0.0, 0.5)
+	banner_label.text = text
+	banner_label.add_theme_color_override("font_color", color)
+	banner.modulate.a = 0.0
+	banner.scale = Vector2(1.25, 1.25)
+	var tw := banner.create_tween()
+	tw.set_parallel()
+	tw.tween_property(banner, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(banner, "modulate:a", 1.0, 0.2)
+	tw.chain().tween_interval(1.4)
+	tw.chain().tween_property(banner, "modulate:a", 0.0, 0.5)
 
-func _process(_delta: float) -> void:
-	if drawer:
-		drawer.queue_redraw()
 
-func _draw_bars() -> void:
-	var font := ThemeDB.fallback_font
+# ---------------------------------------------------------------- per-frame (cheap; redraw only on change)
+
+func _process(delta: float) -> void:
+	if drawer == null:
+		return
+	var sig := 17
 	for i in range(local_heroes.size()):
 		var h: Node = local_heroes[i]
 		if not is_instance_valid(h):
 			continue
-		var y := 18.0 + i * 110.0
-		drawer.draw_rect(Rect2(18, y - 2, 80, 80), GOLD, false, 3.0)
-		var x := 108.0
-		var w := 260.0
-		var frac := clampf(h.hp / float(h.max_hp), 0.0, 1.0)
-		drawer.draw_rect(Rect2(x - 3, y + 4, w + 6, 30), INK)
-		drawer.draw_rect(Rect2(x, y + 7, w, 24), Color(0.25, 0.05, 0.08))
-		drawer.draw_rect(Rect2(x, y + 7, w * frac, 24), Color(0.85, 0.15, 0.2) if frac > 0.3 else Color(1, 0.35, 0.2))
-		drawer.draw_rect(Rect2(x, y + 7, w * frac, 7), Color(1, 1, 1, 0.25))
+		var frac := clampf(h.hp / float(max(1, h.max_hp)), 0.0, 1.0)
+		sig = sig * 31 + int(h.hp * 4.0)
+		sig = sig * 31 + int(h.max_hp)
+		sig = sig * 31 + int(h.dash_charges)
+		sig = sig * 31 + int(h.special_cd * 20.0)
+		sig = sig * 31 + (1 if h.downed else 0)
+		if h.hp < _last_hp[i] - 0.5 and h.local_index == 0:
+			_hit_flash()
+		_last_hp[i] = h.hp
+		if _hp_trail[i] > frac:
+			_hp_trail[i] = maxf(frac, _hp_trail[i] - delta * 0.6)
+			sig = sig * 31 + int(_hp_trail[i] * 400.0)
+		else:
+			_hp_trail[i] = frac
+	_update_low_hp()
+	# boss
+	if not is_instance_valid(_boss):
+		_boss = null
+		if arena and Engine.get_process_frames() % 15 == 0:
+			for e in arena.enemies():
+				if e.kind == "regent":
+					_boss = e
+					_boss_trail = 1.0
+					_on_boss_appear()
+					break
+	if _boss:
+		var bf := clampf(_boss.hp / _boss.max_hp, 0.0, 1.0)
+		if _boss_trail > bf:
+			_boss_trail = maxf(bf, _boss_trail - delta * 0.35)
+		else:
+			_boss_trail = bf
+		sig = sig * 31 + int(_boss.hp)
+		sig = sig * 31 + int(_boss_trail * 500.0)
+	var sh := Game.run_shards
+	sig = sig * 31 + sh
+	if sig != _sig:
+		_sig = sig
+		_shard_label.text = str(sh)
+		drawer.queue_redraw()
+	if Net.online and Engine.get_process_frames() % 30 == 0:
+		_ping_label.text = "Hosting" if Net.is_host() else "Ping %d ms" % Net.ping_ms
+
+
+func _on_boss_appear() -> void:
+	if room_plate:
+		var tw := room_plate.create_tween()
+		tw.tween_property(room_plate, "modulate:a", 0.0, 0.3)
+		tw.tween_callback(func(): room_plate.visible = false)
+
+
+func _hit_flash() -> void:
+	if _vig_tw and _vig_tw.is_valid() and not _low:
+		_vig_tw.kill()
+	if _low:
+		return
+	_vignette.modulate.a = 0.55
+	_vig_tw = _vignette.create_tween()
+	_vig_tw.tween_property(_vignette, "modulate:a", 0.0, 0.45)
+
+
+func _update_low_hp() -> void:
+	var low := false
+	for h in local_heroes:
+		if is_instance_valid(h) and h.local_index == 0 and not h.downed and h.hp / float(max(1, h.max_hp)) < LOW_HP:
+			low = true
+	if low == _low:
+		return
+	_low = low
+	if _vig_tw and _vig_tw.is_valid():
+		_vig_tw.kill()
+	_vig_tw = _vignette.create_tween()
+	if low:
+		_vig_tw.set_loops()
+		_vig_tw.tween_property(_vignette, "modulate:a", 0.75, 0.45).set_trans(Tween.TRANS_SINE)
+		_vig_tw.tween_property(_vignette, "modulate:a", 0.35, 0.65).set_trans(Tween.TRANS_SINE)
+	else:
+		_vig_tw.tween_property(_vignette, "modulate:a", 0.0, 0.4)
+
+
+func _draw_bars() -> void:
+	for i in range(local_heroes.size()):
+		var h: Node = local_heroes[i]
+		if not is_instance_valid(h):
+			continue
+		var y := 10.0 + i * ROW_H
+		var bx := BAR_X
+		var by := y + 10.0
+		var frac := clampf(h.hp / float(max(1, h.max_hp)), 0.0, 1.0)
+		# interior of hp_frame.png (400x35): x 28..372, y 9..26
+		var ix := bx + 26.0
+		var iw := 348.0
+		var iy := by + 8.0
+		var ih := 19.0
+		drawer.draw_rect(Rect2(ix, iy, iw, ih), Color(0.09, 0.02, 0.04, 0.92))
+		var trail: float = _hp_trail[i] if i < _hp_trail.size() else frac
+		if trail > frac:
+			drawer.draw_rect(Rect2(ix + iw * frac, iy, iw * (trail - frac), ih), Color(1.0, 0.85, 0.6, 0.85))
+		var c1 := Color(0.86, 0.12, 0.16) if frac > LOW_HP else Color(1.0, 0.32, 0.14)
+		drawer.draw_rect(Rect2(ix, iy, iw * frac, ih), c1)
+		drawer.draw_rect(Rect2(ix, iy, iw * frac, ih * 0.38), Color(1, 0.75, 0.65, 0.28))
+		drawer.draw_rect(Rect2(ix, iy + ih - 4, iw * frac, 4), Color(0.3, 0.0, 0.05, 0.45))
+		if _tex_frame:
+			drawer.draw_texture_rect(_tex_frame, Rect2(bx, by, 400, 35), false)
 		var hp_text := "%d / %d" % [int(ceil(h.hp)), h.max_hp]
 		if h.downed:
 			hp_text = "DOWNED"
-		drawer.draw_string_outline(font, Vector2(x + 8, y + 26), hp_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, 5, INK)
-		drawer.draw_string(font, Vector2(x + 8, y + 26), hp_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
+		_text_c(Vector2(ix, by + 25), iw, hp_text, 16, Color(1, 0.95, 0.88))
+		# dash pips (shard gems)
 		var maxd: int = 1 + int(h.stats.get("dash_charges", 0))
+		var px := bx + 28.0
 		for d in range(maxd):
-			var c := Vector2(x + 10 + d * 24, y + 52)
-			drawer.draw_circle(c, 9, INK)
-			drawer.draw_circle(c, 7, Color(0.55, 0.85, 1.0) if d < h.dash_charges else Color(0.2, 0.25, 0.3))
-		var sp := 1.0 - clampf(h.special_cd / 2.6, 0.0, 1.0)
-		var sc := Vector2(x + w - 14, y + 52)
-		drawer.draw_circle(sc, 12, INK)
-		drawer.draw_arc(sc, 9, -PI / 2, -PI / 2 + TAU * sp, 24, Color(0.85, 0.5, 1.0), 5.0)
-		if local_heroes.size() > 1:
-			drawer.draw_string_outline(font, Vector2(x + w + 12, y + 26), "P%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, 5, INK)
-			drawer.draw_string(font, Vector2(x + w + 12, y + 26), "P%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, GOLD)
-	var vs := drawer.size
-	var shard_text := "Veil Shards: %d" % Game.run_shards
-	if Net.online:
-		shard_text += "   Ping: %d ms" % Net.ping_ms if not Net.is_host() else "   Hosting"
-	drawer.draw_string_outline(font, Vector2(vs.x - 520, 52), shard_text, HORIZONTAL_ALIGNMENT_RIGHT, 410, 20, 5, INK)
-	drawer.draw_string(font, Vector2(vs.x - 520, 52), shard_text, HORIZONTAL_ALIGNMENT_RIGHT, 410, 20, GOLD)
-	# Boss bar.
-	if arena:
-		for e in arena.enemies():
-			if e.kind == "regent":
-				var bw := minf(720.0, vs.x - 200.0)
-				var bx := (vs.x - bw) / 2.0
-				var by := 54.0
-				var f := clampf(e.hp / e.max_hp, 0.0, 1.0)
-				drawer.draw_rect(Rect2(bx - 4, by - 4, bw + 8, 26), INK)
-				drawer.draw_rect(Rect2(bx, by, bw, 18), Color(0.2, 0.05, 0.25))
-				drawer.draw_rect(Rect2(bx, by, bw * f, 18), Color(0.7, 0.3, 0.95))
-				drawer.draw_rect(Rect2(bx + bw * 0.5 - 1, by, 2, 18), GOLD)
-				drawer.draw_string_outline(font, Vector2(bx, by + 44), "THE HOLLOW REGENT", HORIZONTAL_ALIGNMENT_CENTER, bw, 20, 5, INK)
-				drawer.draw_string(font, Vector2(bx, by + 44), "THE HOLLOW REGENT", HORIZONTAL_ALIGNMENT_CENTER, bw, 20, Color(0.9, 0.75, 1.0))
-				break
+			var lit: bool = d < h.dash_charges
+			if _tex_shard:
+				drawer.draw_texture_rect(_tex_shard, Rect2(px + d * 20.0, by + 35.0, 15, 26), false, Color(1, 1, 1) if lit else Color(0.22, 0.2, 0.26, 0.9))
+		# special: gilded orb + cooldown ring
+		var sp := 1.0 - clampf(h.special_cd / SPECIAL_CD, 0.0, 1.0)
+		var sc := Vector2(bx + 400.0 + 26.0, by + 18.0)
+		if _tex_orb:
+			drawer.draw_texture_rect(_tex_orb, Rect2(sc - Vector2(26, 26), Vector2(52, 52)), false)
+		if _tex_special:
+			var a := 1.0 if sp >= 1.0 else 0.35
+			drawer.draw_texture_rect(_tex_special, Rect2(sc - Vector2(15, 15), Vector2(30, 30)), false, Color(1, 1, 1, a))
+		if sp < 1.0:
+			drawer.draw_arc(sc, 19.0, -PI / 2, -PI / 2 + TAU * sp, 32, Color(0.95, 0.6, 1.0, 0.95), 4.0, true)
+	# boss bar
+	if _boss and is_instance_valid(_boss):
+		var vs := drawer.size
+		# top centre between the heroine cluster and the purse; on narrow screens drop to the bottom centre
+		var top_room := vs.x - 2.0 * 575.0
+		var bw := clampf(top_room, 480.0, 760.0)
+		var by2 := 2.0
+		if top_room < 480.0:
+			bw = clampf(vs.x - 2.0 * 400.0, 380.0, 640.0)
+		var s := bw / 760.0
+		var bh := 119.0 * s
+		var bx2 := (vs.x - bw) * 0.5
+		if top_room < 480.0:
+			by2 = vs.y - bh - 40.0
+		var f := clampf(_boss.hp / _boss.max_hp, 0.0, 1.0)
+		# interior of boss_frame.png (760x119): x 60..700, y 63..91
+		var ix2 := bx2 + 60.0 * s
+		var iw2 := 640.0 * s
+		var iy2 := by2 + 63.0 * s
+		var ih2 := 28.0 * s
+		drawer.draw_rect(Rect2(ix2, iy2, iw2, ih2), Color(0.06, 0.02, 0.08, 0.95))
+		if _boss_trail > f:
+			drawer.draw_rect(Rect2(ix2 + iw2 * f, iy2, iw2 * (_boss_trail - f), ih2), Color(1.0, 0.9, 0.7, 0.85))
+		drawer.draw_rect(Rect2(ix2, iy2, iw2 * f, ih2), Color(0.62, 0.24, 0.9))
+		drawer.draw_rect(Rect2(ix2, iy2, iw2 * f, ih2 * 0.4), Color(0.95, 0.75, 1.0, 0.3))
+		drawer.draw_rect(Rect2(ix2 + iw2 * 0.5 - 1, iy2, 2, ih2), Color(1, 0.85, 0.5, 0.8))
+		if _tex_boss:
+			drawer.draw_texture_rect(_tex_boss, Rect2(bx2, by2, bw, bh), false)
+		_text_c(Vector2(bx2, by2 + bh + 16), bw, "THE HOLLOW REGENT", 20, Color(0.92, 0.8, 1.0), _font_caps)
+
+
+func _text_c(pos: Vector2, width: float, text: String, size: int, col: Color, f: Font = null) -> void:
+	var fo: Font = f if f else _font
+	drawer.draw_string_outline(fo, pos, text, HORIZONTAL_ALIGNMENT_CENTER, width, size, 6, INK)
+	drawer.draw_string(fo, pos, text, HORIZONTAL_ALIGNMENT_CENTER, width, size, col)
+
 
 # ---------------------------------------------------------------- boon choice
 
 func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 	if boon_panel and is_instance_valid(boon_panel):
 		boon_panel.queue_free()
+	if choices.is_empty():
+		return
 	var first: Dictionary = Game.boon_by_id(choices[0]["id"])
-	var patron: Dictionary = Game.PATRONS[first["patron"]]
-	boon_panel = PanelContainer.new()
-	boon_panel.add_theme_stylebox_override("panel", _style(Color(0.06, 0.03, 0.08, 0.94), patron["color"], 3))
-	boon_panel.set_anchors_preset(Control.PRESET_CENTER)
-	boon_panel.custom_minimum_size = Vector2(760, 0)
-	boon_panel.position = Vector2(-380, -250)
-	root.add_child(boon_panel)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 10)
-	boon_panel.add_child(v)
+	var patron_id := String(first.get("patron", "oriel"))
+	var patron: Dictionary = Game.PATRONS.get(patron_id, {"name": "", "color": GOLD})
+	var pcol: Color = patron["color"]
+	var vs := root.get_viewport_rect().size
+	VTheme.sound("boon")
+
+	var ov := Control.new()
+	ov.name = "BoonChoice"
+	ov.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(ov)
+	boon_panel = ov
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.0, 0.03, 0.62)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ov.add_child(dim)
+	var tint := VTheme.image(VTheme.vignette_tex(Color(pcol.r, pcol.g, pcol.b, 0.45), 0.3), Vector2.ZERO, false)
+	tint.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.add_child(tint)
+	_fade_node(ov, 0.25)
+
+	# the Warden herself, sliding in from the left
+	var wt := VTheme.warden_tex(patron_id)
+	var cards_w := 3.0 * 300.0 + 2.0 * 22.0
+	var card_x0 := (vs.x - cards_w) * 0.5
+	if wt:
+		var ph := 640.0
+		var pw := ph * float(wt.get_width()) / float(wt.get_height())
+		var room_left := card_x0
+		var por := VTheme.image(wt, Vector2.ZERO, false)
+		por.material = VTheme.material("fade_bottom")
+		por.size = Vector2(pw, ph)
+		var px := minf(room_left - pw * 0.55, 10.0)
+		if vs.x >= 1500.0:
+			card_x0 = maxf(card_x0, pw * 0.55)
+			px = card_x0 - pw * 0.62
+		por.position = Vector2(px - 120.0, vs.y - ph + 40.0)
+		por.modulate.a = 0.0
+		ov.add_child(por)
+		var pt := por.create_tween().set_parallel()
+		pt.tween_property(por, "position:x", px, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		pt.tween_property(por, "modulate:a", 1.0, 0.35)
+
 	var who := ""
 	if local_heroes.size() > 1:
-		who = "Player %d: " % (local_heroes.find(hero) + 1)
-	var title := _label("%sThe Wardens offer a gift" % who, 28, GOLD)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(title)
-	var story = load("res://data/story.gd")
-	if story and story.has_method("warden_line"):
-		var line := _label("“%s”" % str(story.warden_line(first["patron"])), 18, patron["color"].lightened(0.3))
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.add_child(line)
+		who = "PLAYER %d  ·  " % (local_heroes.find(hero) + 1)
+	var head := VTheme.title_label("%sA GIFT FROM %s" % [who, String(patron["name"]).to_upper()], 26, pcol.lightened(0.35), 7, "caps")
+	head.position = Vector2(0, 16)
+	head.size = Vector2(vs.x, 40)
+	ov.add_child(head)
+	var line_txt := str(StoryData.warden_line(patron_id))
+	var line := VTheme.label("“%s”" % line_txt, "Quote", 21)
+	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	line.position = Vector2(vs.x * 0.5 - 420, 56)
+	line.size = Vector2(840, 60)
+	line.add_theme_color_override("font_color", Color(0.96, 0.9, 0.82))
+	ov.add_child(line)
+	for c in [head, line]:
+		_fade_node(c, 0.4, 0.15)
+
 	var first_btn: Button = null
-	for c in choices:
-		var b := Game.boon_by_id(c["id"])
-		var pat: Dictionary = Game.PATRONS[b["patron"]]
-		var r: int = c["rarity"]
-		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(0, 92)
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.add_theme_font_size_override("font_size", 20)
-		btn.add_theme_stylebox_override("normal", _style(Color(0.12, 0.07, 0.14), pat["color"].darkened(0.2), 2))
-		btn.add_theme_stylebox_override("hover", _style(Color(0.2, 0.12, 0.22), pat["color"], 3))
-		btn.add_theme_stylebox_override("focus", _style(Color(0.2, 0.12, 0.22), GOLD, 3))
-		btn.add_theme_stylebox_override("pressed", _style(Color(0.3, 0.18, 0.3), GOLD, 3))
-		var up := "  (Upgrade)" if c["upgrade"] else ""
-		btn.text = "%s  —  %s%s\n%s   ·   %s" % [b["name"], Game.RARITY_NAMES[r], up, Game.boon_text(c["id"], r), pat["name"]]
-		btn.add_theme_color_override("font_color", Game.RARITY_COLORS[r].lightened(0.2))
-		btn.pressed.connect(func():
-			if is_instance_valid(boon_panel):
-				boon_panel.queue_free()
-			boon_panel = null
-			on_pick.call(c["id"], r))
-		v.add_child(btn)
+	var picked := [false]
+	var card_y := 128.0
+	for k in range(choices.size()):
+		var c: Dictionary = choices[k]
+		var card := _boon_card(c, hero)
+		ov.add_child(card)
+		var target := Vector2(card_x0 + k * 322.0, card_y)
+		card.position = target + Vector2(0, 380)
+		card.rotation = deg_to_rad(-6.0 + k * 6.0)
+		card.modulate.a = 0.0
+		var ct := card.create_tween().set_parallel()
+		ct.tween_property(card, "position", target, 0.5).set_delay(0.12 + k * 0.09).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		ct.tween_property(card, "rotation", 0.0, 0.5).set_delay(0.12 + k * 0.09).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		ct.tween_property(card, "modulate:a", 1.0, 0.25).set_delay(0.12 + k * 0.09)
+		var cid := String(c["id"])
+		var rar := int(c["rarity"])
+		card.pressed.connect(func():
+			if picked[0]:
+				return
+			picked[0] = true
+			VTheme.sound("confirm")
+			_dismiss_choice(ov, card)
+			if boon_panel == ov:
+				boon_panel = null
+			on_pick.call(cid, rar))
 		if first_btn == null:
-			first_btn = btn
-	boon_panel.scale = Vector2(0.85, 0.85)
-	boon_panel.pivot_offset = Vector2(380, 250)
-	create_tween().tween_property(boon_panel, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			first_btn = card
 	if first_btn:
 		first_btn.call_deferred("grab_focus")
+
+
+func _boon_card(c: Dictionary, _hero: Node) -> Button:
+	var b := Game.boon_by_id(c["id"])
+	var pid := String(b.get("patron", "oriel"))
+	var pat: Dictionary = Game.PATRONS.get(pid, {"name": "", "color": GOLD})
+	var r: int = int(c["rarity"])
+	var rcol: Color = VTheme.RARITY_TINT[clampi(r, 0, 2)]
+	var btn := Button.new()
+	btn.theme_type_variation = "IconButton"
+	btn.custom_minimum_size = Vector2(300, 446)
+	btn.size = Vector2(300, 446)
+	btn.pivot_offset = Vector2(150, 223)
+	btn.focus_mode = Control.FOCUS_ALL
+	VTheme.juice(btn, 1.04, "")
+	var frame := PanelContainer.new()
+	frame.add_theme_stylebox_override("panel", VTheme.card_style(rcol))
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(frame)
+	# patron glow behind icon
+	var g := Gradient.new()
+	var pc: Color = pat["color"]
+	g.set_color(0, Color(pc.r, pc.g, pc.b, 0.55))
+	g.set_color(1, Color(pc.r, pc.g, pc.b, 0.0))
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(0.5, 0.0)
+	var glow := VTheme.image(gt, Vector2.ZERO, false)
+	glow.position = Vector2(40, 50)
+	glow.size = Vector2(220, 200)
+	btn.add_child(glow)
+	var ic := VTheme.image(VTheme.boon_icon(String(c["id"])), Vector2.ZERO)
+	ic.position = Vector2(82, 66)
+	ic.size = Vector2(136, 136)
+	btn.add_child(ic)
+	# tiny warden face in the crest socket
+	var face := VTheme.image(VTheme.tex("face_" + pid), Vector2.ZERO, false)
+	face.position = Vector2(150 - 20, 20)
+	face.size = Vector2(40, 40)
+	btn.add_child(face)
+	var v := VBoxContainer.new()
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_theme_constant_override("separation", 2)
+	v.position = Vector2(26, 222)
+	v.size = Vector2(248, 200)
+	btn.add_child(v)
+	var name_l := VTheme.title_label(String(b.get("name", c["id"])), 26, Color(1, 0.94, 0.82), 6)
+	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(name_l)
+	var short := String(pat["name"]).split(",")[0].split(" ")[0]
+	var rl := VTheme.label("%s  ·  %s" % [String(Game.RARITY_NAMES[r]).to_upper(), short.to_upper()], "Caps", 15)
+	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rl.add_theme_color_override("font_color", Game.RARITY_COLORS[r].lightened(0.15))
+	v.add_child(rl)
+	var dv := VTheme.divider(220, 22)
+	v.add_child(dv)
+	var d := VTheme.label(Game.boon_text(String(c["id"]), r), "Body", 21)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	d.custom_minimum_size = Vector2(236, 0)
+	v.add_child(d)
+	if bool(c.get("upgrade", false)):
+		var up := PanelContainer.new()
+		up.theme_type_variation = "Plate"
+		up.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		up.position = Vector2(40, 172)
+		up.size = Vector2(220, 44)
+		up.custom_minimum_size = Vector2(220, 44)
+		btn.add_child(up)
+		var ul := VTheme.title_label("▲  UPGRADE  ▲", 16, Color(0.75, 1.0, 0.6), 5, "caps")
+		up.add_child(ul)
+		var ut := ul.create_tween().set_loops()
+		ut.tween_property(ul, "modulate", Color(1.3, 1.3, 1.1), 0.6)
+		ut.tween_property(ul, "modulate", Color(1, 1, 1), 0.6)
+	# focus outline glow (rarity color)
+	btn.focus_entered.connect(func(): frame.self_modulate = Color(1.25, 1.2, 1.1))
+	btn.focus_exited.connect(func(): frame.self_modulate = Color(1, 1, 1))
+	btn.mouse_entered.connect(func(): btn.grab_focus())
+	return btn
+
+
+func _dismiss_choice(ov: Control, chosen: Control) -> void:
+	if not is_instance_valid(ov):
+		return
+	ov.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for ch in ov.get_children():
+		if ch is Button:
+			(ch as Button).disabled = true
+			(ch as Button).focus_mode = Control.FOCUS_NONE
+	var tw := ov.create_tween().set_parallel()
+	tw.tween_property(chosen, "scale", Vector2(1.12, 1.12), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ov, "modulate:a", 0.0, 0.3).set_delay(0.15)
+	tw.chain().tween_callback(ov.queue_free)
+
+
+func _fade_node(c: CanvasItem, d: float, delay := 0.0) -> void:
+	c.modulate.a = 0.0
+	c.create_tween().tween_property(c, "modulate:a", 1.0, d).set_delay(delay)
+
 
 # ---------------------------------------------------------------- pause
 
@@ -260,49 +669,84 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_pause()
 		get_viewport().set_input_as_handled()
 
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_toggle_pause()
 
+
 func _toggle_pause() -> void:
 	if pause_panel and is_instance_valid(pause_panel):
+		VTheme.sound("back")
 		pause_panel.queue_free()
 		pause_panel = null
 		get_tree().paused = false
 		return
 	if not Net.online:
 		get_tree().paused = true
-	pause_panel = PanelContainer.new()
-	pause_panel.add_theme_stylebox_override("panel", _style(Color(0.06, 0.03, 0.08, 0.95), GOLD))
-	pause_panel.set_anchors_preset(Control.PRESET_CENTER)
-	pause_panel.position = Vector2(-200, -150)
-	pause_panel.custom_minimum_size = Vector2(400, 0)
-	root.add_child(pause_panel)
+	var ov := Control.new()
+	ov.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.mouse_filter = Control.MOUSE_FILTER_STOP
+	ov.theme = VTheme.get_theme()
+	root.add_child(ov)
+	pause_panel = ov
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.0, 0.03, 0.66)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.add_child(dim)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.add_child(cc)
+	var p := PanelContainer.new()
+	p.custom_minimum_size = Vector2(520, 0)
+	cc.add_child(p)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 12)
-	pause_panel.add_child(v)
-	var t := _label("Paused" if not Net.online else "Menu (co-op keeps running)", 28, GOLD)
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p.add_child(v)
+	var t := VTheme.title_label("Paused" if not Net.online else "Menu", 46, VTheme.GOLD_BRIGHT, 9)
 	v.add_child(t)
-	var resume := _menu_button("Resume")
+	if Net.online:
+		var n := VTheme.label("Co-op keeps running while this is open.", "Quote", 19)
+		n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(n)
+	v.add_child(VTheme.divider(340, 30))
+	var room := VTheme.label("CHAMBER %d  ·  %d SHARDS GATHERED" % [Game.run_room + 1, Game.run_shards], "Caps", 15)
+	room.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(room)
+	var resume := _menu_button("Resume", "BigButton")
 	resume.pressed.connect(_toggle_pause)
 	v.add_child(resume)
-	var quit := _menu_button("Abandon run")
+	var st := _menu_button("Settings", "")
+	st.pressed.connect(func():
+		p.visible = false
+		var sp := Settings.build_panel(func():
+			if is_instance_valid(p):
+				p.visible = true
+				st.grab_focus())
+		cc.add_child(sp))
+	v.add_child(st)
+	var quit := _menu_button("Abandon Run", "DangerButton")
 	quit.pressed.connect(func():
 		_toggle_pause()
 		if arena: arena.abandon())
 	v.add_child(quit)
+	p.resized.connect(func(): p.pivot_offset = p.size * 0.5)
+	p.scale = Vector2(0.9, 0.9)
+	p.create_tween().tween_property(p, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_fade_node(ov, 0.15)
 	resume.call_deferred("grab_focus")
 
-func _menu_button(text: String) -> Button:
+
+func _menu_button(text: String, variation: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(0, 64)
-	b.add_theme_font_size_override("font_size", 24)
-	b.add_theme_stylebox_override("normal", _style(Color(0.12, 0.07, 0.14), GOLD.darkened(0.3), 2))
-	b.add_theme_stylebox_override("hover", _style(Color(0.2, 0.12, 0.22), GOLD, 3))
-	b.add_theme_stylebox_override("focus", _style(Color(0.2, 0.12, 0.22), GOLD, 3))
+	if variation != "":
+		b.theme_type_variation = variation
+	b.custom_minimum_size = Vector2(340, 70 if variation == "BigButton" else 60)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	VTheme.juice(b)
 	return b
+
 
 func _exit_tree() -> void:
 	get_tree().paused = false

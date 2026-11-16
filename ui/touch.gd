@@ -1,30 +1,49 @@
 extends Control
-## Multi-touch controls: floating joystick on the left, action buttons on the right.
+## Multi-touch controls: floating joystick on the left, gilded action medallions on the right.
+## Positions are computed from get_viewport_rect() (robust even before this Control is laid out).
+
+const VTheme = preload("res://ui/theme.gd")
 
 var move := Vector2.ZERO
 var attack := false
 var special := false
 var dash := false
 
-const JOY_RADIUS := 90.0
+const JOY_RADIUS := 92.0
+const SPECIAL_CD := 2.6
 var _touches := {} ## index -> {"role": String, "origin": Vector2, "pos": Vector2}
 var hero: Node = null
+
+var _orb: Texture2D
+var _ring: Texture2D
+var _dot: Texture2D
+var _glyphs := {}
+var _last_sig := -1
+
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_orb = VTheme.tex("orb")
+	_ring = VTheme.tex("ring")
+	_dot = VTheme.tex("dot")
+	_glyphs = {"attack": VTheme.tex("glyph_attack"), "dash": VTheme.tex("glyph_dash"), "special": VTheme.tex("glyph_special")}
+
 
 ## Screen size in canvas units (robust even if this Control's own rect is not laid out yet).
 func _screen() -> Vector2:
 	return get_viewport_rect().size
 
+
+## [center, radius, label, accent color]
 func _buttons() -> Dictionary:
 	var s := _screen()
 	return {
-		"attack": [Vector2(s.x - 140, s.y - 140), 78.0, "ATTACK", Color(1.0, 0.55, 0.25)],
-		"dash": [Vector2(s.x - 300, s.y - 95), 56.0, "DASH", Color(0.55, 0.85, 1.0)],
-		"special": [Vector2(s.x - 120, s.y - 310), 56.0, "SPECIAL", Color(0.85, 0.5, 1.0)],
+		"attack": [Vector2(s.x - 150, s.y - 150), 84.0, "ATTACK", Color(1.0, 0.6, 0.25)],
+		"dash": [Vector2(s.x - 322, s.y - 98), 62.0, "DASH", Color(0.55, 0.85, 1.0)],
+		"special": [Vector2(s.x - 128, s.y - 328), 62.0, "SPECIAL", Color(0.88, 0.55, 1.0)],
 	}
+
 
 func _input(event: InputEvent) -> void:
 	if not visible:
@@ -32,8 +51,9 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			var role := "joy"
-			for k in _buttons().keys():
-				var b: Array = _buttons()[k]
+			var bs := _buttons()
+			for k in bs.keys():
+				var b: Array = bs[k]
 				if event.position.distance_to(b[0]) < b[1] * 1.25:
 					role = k
 			if role == "joy" and event.position.x > _screen().x * 0.5:
@@ -45,6 +65,7 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventScreenDrag and _touches.has(event.index):
 		_touches[event.index]["pos"] = event.position
 		_recompute()
+
 
 func _recompute() -> void:
 	move = Vector2.ZERO
@@ -61,41 +82,72 @@ func _recompute() -> void:
 			"dash": dash = true
 	queue_redraw()
 
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_touches.clear()
 		_recompute()
 
+
 func _draw() -> void:
-	var font := ThemeDB.fallback_font
+	var font := VTheme.font("caps")
 	var joy_drawn := false
 	for t in _touches.values():
 		if t["role"] == "joy":
 			joy_drawn = true
-			draw_circle(t["origin"], JOY_RADIUS, Color(0, 0, 0, 0.3))
-			draw_arc(t["origin"], JOY_RADIUS, 0, TAU, 48, Color(1, 0.85, 0.5, 0.6), 3.0)
-			draw_circle(t["origin"] + move * JOY_RADIUS, 38, Color(1, 0.85, 0.5, 0.55))
+			var o: Vector2 = t["origin"]
+			draw_circle(o, JOY_RADIUS, Color(0.03, 0.01, 0.04, 0.35))
+			if _ring:
+				draw_texture_rect(_ring, Rect2(o - Vector2.ONE * (JOY_RADIUS + 14), Vector2.ONE * (JOY_RADIUS + 14) * 2), false, Color(1, 1, 1, 0.85))
+			var k := o + move * JOY_RADIUS
+			if _dot:
+				draw_texture_rect(_dot, Rect2(k - Vector2(56, 56), Vector2(112, 112)), false, Color(1.0, 0.6, 0.25, 0.35))
+			if _orb:
+				draw_texture_rect(_orb, Rect2(k - Vector2(40, 40), Vector2(80, 80)), false)
 	if not joy_drawn:
-		var c := Vector2(170, _screen().y - 160)
-		draw_arc(c, JOY_RADIUS, 0, TAU, 48, Color(1, 0.85, 0.5, 0.25), 3.0)
-		draw_circle(c, 34, Color(1, 0.85, 0.5, 0.15))
+		var c := Vector2(180, _screen().y - 170)
+		if _ring:
+			draw_texture_rect(_ring, Rect2(c - Vector2.ONE * (JOY_RADIUS + 14), Vector2.ONE * (JOY_RADIUS + 14) * 2), false, Color(1, 1, 1, 0.3))
+		if _orb:
+			draw_texture_rect(_orb, Rect2(c - Vector2(34, 34), Vector2(68, 68)), false, Color(1, 1, 1, 0.3))
 	var b := _buttons()
-	for k in b.keys():
-		var info: Array = b[k]
-		var held: bool = get(k)
+	for key in b.keys():
+		var info: Array = b[key]
+		var held: bool = get(key)
 		var col: Color = info[3]
+		var ctr: Vector2 = info[0]
+		var r: float = info[1] * (0.93 if held else 1.0)
 		var ready := 1.0
 		if is_instance_valid(hero):
-			if k == "special":
-				ready = 1.0 - clampf(hero.special_cd / 2.6, 0.0, 1.0)
-			elif k == "dash":
+			if key == "special":
+				ready = 1.0 - clampf(hero.special_cd / SPECIAL_CD, 0.0, 1.0)
+			elif key == "dash":
 				ready = 1.0 if hero.dash_charges > 0 else 0.3
-		draw_circle(info[0], info[1] + 4, Color(0.05, 0.02, 0.06, 0.7))
-		draw_circle(info[0], info[1], Color(col, 0.55 if held else 0.28))
-		draw_arc(info[0], info[1], -PI / 2, -PI / 2 + TAU * ready, 48, Color(col, 0.95), 5.0)
-		draw_string_outline(font, info[0] + Vector2(-60, 8), info[2], HORIZONTAL_ALIGNMENT_CENTER, 120, 20, 5, Color(0, 0, 0, 0.8))
-		draw_string(font, info[0] + Vector2(-60, 8), info[2], HORIZONTAL_ALIGNMENT_CENTER, 120, 20, Color.WHITE)
+		var a := 0.92 if ready >= 1.0 else 0.6
+		if held and _dot:
+			draw_texture_rect(_dot, Rect2(ctr - Vector2.ONE * r * 1.7, Vector2.ONE * r * 3.4), false, Color(col.r, col.g, col.b, 0.55))
+		if _orb:
+			draw_texture_rect(_orb, Rect2(ctr - Vector2(r, r), Vector2(r, r) * 2.0), false, Color(1, 1, 1, a) if not held else Color(1.25, 1.15, 1.0, 1.0))
+		var g: Texture2D = _glyphs.get(key)
+		if g:
+			var gs := r * 1.05
+			var gw := gs * float(g.get_width()) / float(g.get_height())
+			if gw > gs * 1.15:
+				gw = gs * 1.15
+				gs = gw * float(g.get_height()) / float(g.get_width())
+			draw_texture_rect(g, Rect2(ctr - Vector2(gw, gs) * 0.5, Vector2(gw, gs)), false, Color(1, 1, 1, 1.0 if ready >= 1.0 else 0.4))
+		if ready < 1.0:
+			draw_arc(ctr, r * 0.66, -PI / 2, -PI / 2 + TAU * ready, 40, Color(col.r, col.g, col.b, 0.95), 5.0, true)
+		var ly := ctr.y + r + 18.0
+		draw_string_outline(font, Vector2(ctr.x - 80, ly), info[2], HORIZONTAL_ALIGNMENT_CENTER, 160, 15, 5, Color(0.03, 0.01, 0.04, 0.85))
+		draw_string(font, Vector2(ctr.x - 80, ly), info[2], HORIZONTAL_ALIGNMENT_CENTER, 160, 15, Color(1, 0.92, 0.78, 0.85))
+
 
 func _process(_delta: float) -> void:
-	if is_instance_valid(hero) and (hero.special_cd > 0.0 or hero.dash_charges == 0):
+	if not is_instance_valid(hero):
+		return
+	# redraw only while cooldown visuals are changing
+	var sig := int(hero.special_cd * 30.0) * 8 + int(hero.dash_charges)
+	if sig != _last_sig:
+		_last_sig = sig
 		queue_redraw()

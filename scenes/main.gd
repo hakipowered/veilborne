@@ -250,24 +250,20 @@ func _fade_in(c: Control, dur := 0.35) -> void:
 	c.create_tween().tween_property(c, "modulate:a", 1.0, dur)
 
 
-## Rise-in animation for a list of controls (staggered).
-func _rise_in(items: Array, delay := 0.0, step := 0.07, dist := 40.0) -> void:
+## Rise-in animation for a list of controls (staggered). Uses scale + fade only, so it never
+## fights container layout (positions inside containers are owned by the container).
+func _rise_in(items: Array, delay := 0.0, step := 0.07, _dist := 40.0) -> void:
 	var i := 0
 	for c in items:
 		if not (c is Control):
 			continue
 		var ctl: Control = c
 		ctl.modulate.a = 0.0
-		var tw := ctl.create_tween()
-		tw.tween_interval(delay + i * step)
-		tw.tween_callback(func():
-			if not is_instance_valid(ctl):
-				return
-			var base := ctl.position
-			ctl.position.y = base.y + dist
-			var t2 := ctl.create_tween().set_parallel()
-			t2.tween_property(ctl, "modulate:a", 1.0, 0.35)
-			t2.tween_property(ctl, "position:y", base.y, 0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT))
+		ctl.scale = Vector2(0.94, 0.94)
+		ctl.resized.connect(func(): ctl.pivot_offset = Vector2(ctl.size.x * 0.5, ctl.size.y))
+		var tw := ctl.create_tween().set_parallel()
+		tw.tween_property(ctl, "modulate:a", 1.0, 0.35).set_delay(delay + i * step)
+		tw.tween_property(ctl, "scale", Vector2.ONE, 0.45).set_delay(delay + i * step).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		i += 1
 
 
@@ -776,7 +772,7 @@ func show_coop() -> void:
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(row)
 
-	var local := _mode_card(row, "glyph_attack", "Same Device", "Two heroines, one screen. Player 2 uses a gamepad or the arrow keys  ( ,  attack   .  special   /  dash ).")
+	var local := _mode_card(row, "glyph_attack", "Same Device", "Two heroines, one screen. Player 2 plays with a gamepad, or the arrow keys with comma, period and slash.")
 	var lb := _button("Play Local", _start_local, "BigButton", 290, "confirm")
 	lb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	local.add_child(lb)
@@ -989,7 +985,7 @@ func show_sanctum() -> void:
 	# --- top bar with shard purse
 	var purse := PanelContainer.new()
 	purse.theme_type_variation = "Plate"
-	purse.custom_minimum_size = Vector2(300, 64)
+	purse.custom_minimum_size = Vector2(360, 74)
 	var ph := HBoxContainer.new()
 	ph.alignment = BoxContainer.ALIGNMENT_CENTER
 	ph.add_theme_constant_override("separation", 8)
@@ -998,7 +994,7 @@ func show_sanctum() -> void:
 	_shard_label = _label("", "Gold", 26)
 	ph.add_child(_shard_label)
 	_header(outer, "The Sanctum", _leave_sanctum, purse)
-	purse.offset_left = -300
+	purse.offset_left = -360
 
 	# --- body
 	var body := HBoxContainer.new()
@@ -1528,7 +1524,7 @@ func _show_results(victory: bool, earned: int) -> void:
 	qrow.add_theme_constant_override("separation", 16)
 	qrow.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(qrow)
-	var face := _round_portrait("ysolde", 104, Rect2(0.2, 0.09, 0.4, 0.28))
+	var face := _round_portrait("ysolde", 104)
 	qrow.add_child(face)
 	var qv := VBoxContainer.new()
 	qv.add_theme_constant_override("separation", 0)
@@ -1566,32 +1562,16 @@ func _center(c: Control) -> Control:
 	return c
 
 
-## Circular portrait crop inside the gilded ring. region is in UV (0..1) of the portrait texture.
-func _round_portrait(id: String, size: float, region: Rect2) -> Control:
+## Round painted face inside the gilded ring.
+func _round_portrait(id: String, size: float) -> Control:
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(size, size)
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var tex := VTheme.portrait_tex(id)
-	if tex:
-		var at := AtlasTexture.new()
-		at.atlas = tex
-		var w := float(tex.get_width())
-		var h := float(tex.get_height())
-		var side := region.size.x * w
-		at.region = Rect2(region.position.x * w, region.position.y * h, side, side)
-		var bgc := ColorRect.new()
-		bgc.color = Color(0.08, 0.05, 0.1)
-		bgc.material = VTheme.material("circle")
-		bgc.position = Vector2(size * 0.1, size * 0.1)
-		bgc.size = Vector2(size * 0.8, size * 0.8)
-		holder.add_child(bgc)
-		var face := VTheme.image(at, Vector2.ZERO, false)
-		face.material = VTheme.material("circle")
-		face.position = Vector2(size * 0.1, size * 0.1)
-		face.size = Vector2(size * 0.8, size * 0.8)
-		holder.add_child(face)
+	var face := VTheme.image(VTheme.tex("face_" + id), Vector2.ZERO, false)
+	face.position = Vector2(size * 0.1, size * 0.1)
+	face.size = Vector2(size * 0.8, size * 0.8)
+	holder.add_child(face)
 	var ring := VTheme.image("ring", Vector2.ZERO, false)
-	ring.position = Vector2.ZERO
 	ring.size = Vector2(size, size)
 	holder.add_child(ring)
 	return holder

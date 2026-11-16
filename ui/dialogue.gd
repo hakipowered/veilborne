@@ -215,6 +215,7 @@ func _show_speaker(sid: String, spk: Dictionary) -> void:
 		ot.chain().tween_callback(old.queue_free)
 	p.texture = tex
 	var full := sid in FULL_BODY
+	p.material = VTheme.material("fade_full" if full else "fade_bottom")
 	var h: float = 1010.0 if full else 640.0
 	var top: float = 34.0 if full else 76.0
 	var w: float = h * float(tex.get_width()) / maxf(1.0, float(tex.get_height()))
