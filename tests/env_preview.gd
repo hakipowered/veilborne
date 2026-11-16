@@ -9,6 +9,7 @@ var out := "/tmp"
 var tag := "shot"
 var rooms := [0, 1, 2, 3, 4]
 var bench := false
+var hide := []
 var env: Node2D
 var entities: Node2D
 var cam: Camera2D
@@ -23,6 +24,7 @@ func _ready() -> void:
 			rooms = []
 			for s in a.substr(8).split(","): rooms.append(int(s))
 		elif a == "--bench": bench = true
+		elif a.begins_with("--hide="): hide = a.substr(7).split(",")
 	env = EnvScript.new()
 	add_child(env)
 	entities = Node2D.new()
@@ -103,16 +105,24 @@ func _bench() -> void:
 	add_child(old)
 	move_child(old, 0)
 	await get_tree().create_timer(0.5).timeout
-	var t0 := Time.get_ticks_usec()
+	var tb := Time.get_ticks_usec()
 	for f in range(240):
 		cam.position = Vector2(sin(f * 0.03) * 600.0, 0)
 		await get_tree().process_frame
-	print("BENCH baseline_old_floor avg_frame_ms=%.2f" % ((Time.get_ticks_usec() - t0) / 1000.0 / 240.0))
+	print("BENCH baseline_old_floor avg_frame_ms=%.2f" % ((Time.get_ticks_usec() - tb) / 1000.0 / 240.0))
 	old.queue_free()
 	env.visible = true
 	for i in [0, 4]:
 		_build(i)
 		var ys := [env.get_player_start().y, 0.0, -300.0]
+		if "backdrop" in hide: env._backdrop.visible = false
+		if "floor" in hide: env._floor_mat.shader = null
+		if "vignette" in hide: env._vignette.visible = false
+		if "particles" in hide:
+			for n in env.find_children("*", "CPUParticles2D", true, false): n.visible = false
+			for n in entities.find_children("*", "CPUParticles2D", true, false): n.visible = false
+		if "halos" in hide:
+			for h in env._halos: h[0].visible = false
 		await get_tree().create_timer(1.0).timeout
 		var frames := 0
 		var t0 := Time.get_ticks_usec()

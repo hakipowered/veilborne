@@ -72,7 +72,7 @@ func pose(skel: Skeleton3D, model: Node3D, anim: String, u: float) -> void:
 			_rot(skel, "root", -10 * t)
 			_rot(skel, "chest", -18 * t + sh)
 			_rot(skel, "head", -28 * t, 0, sh)
-			_wings(skel, 40 * t, -10 * t)
+			_wings(skel, 55 * t, -10 * t)
 			_rot(skel, "leg_fl", -18 * t)
 			_rot(skel, "leg_fr", -18 * t)
 		"attack":
@@ -80,10 +80,10 @@ func pose(skel: Skeleton3D, model: Node3D, anim: String, u: float) -> void:
 			var r := ease_in(clampf((u - 0.45) / 0.55, 0, 1))
 			var k := a * (1.0 - r)
 			var wind := 1.0 - a
-			_move(skel, "root", Vector3(0, 0.06 * wind, 0.14 * k - 0.12 * wind))
+			_move(skel, "root", Vector3(0, 0.06 * wind, 0.24 * k - 0.12 * wind))
 			_rot(skel, "root", 12 * k - 10 * wind)
 			_rot(skel, "chest", 10 * k - 18 * wind)
-			_rot(skel, "head", 30 * k - 28 * wind)
+			_rot(skel, "head", 40 * k - 28 * wind)
 			_wings(skel, -20 * k + 40 * wind, 15 * k)
 			_rot(skel, "leg_bl", 15 * k)
 			_rot(skel, "leg_br", 15 * k)

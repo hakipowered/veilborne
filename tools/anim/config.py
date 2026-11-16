@@ -23,7 +23,7 @@ def seg(clip, a, h, b, n, k, fps, ease_in=1.0, extra_events=None, yaw=0):
     return {"yaw": yaw, "clip": clip, "from": 0.0, "to": 1.0, "frames": n, "times": [round(x, 4) for x in t], "fps": fps, "loop": False, "events": ev}
 
 def times(clip, ts, k, fps, yaw=0):
-    return {"yaw": yaw, "clip": clip, "from": 0.0, "to": 1.0, "frames": len(ts), "times": ts, "fps": fps, "loop": False, "events": {"hit": k}}
+    return {"yaw": yaw, "clip": clip, "from": 0.0, "to": 1.0, "frames": len(ts), "times": ts, "fps": fps, "loop": False, "events": ({"hit": k} if k >= 0 else {})}
 
 def lin(clip, a, b, n, fps, loop=False, events=None):
     d = {"clip": clip, "from": a, "to": b, "frames": n, "fps": fps, "loop": loop}
@@ -96,6 +96,38 @@ C["spitter"] = {
         "attack": {"frames": 7, "fps": 16, "events": {"hit": 2}},
         "hurt": {"frames": 5, "fps": 14},
         "death": {"frames": 10, "fps": 12},
+    },
+}
+
+C["brute"] = {
+    "model": FB + "b_a0.fbx",
+    "clip_files": [FB + "b_a%d.fbx" % i for i in range(5)],
+    "up_axis": 2, "cell": 352, "ss": 2, "cam_size": 3.6, "center_y": 1.0, "elev": 40, "height_m": 2.1,
+    "anims": {
+        "idle": lin("Idle", 0, 1, 10, 8, True),
+        "move": lin("Slow_Orc_Walk", 0, 1, 8, 10, True, {"step": [0, 4]}),
+        # telegraph: hammer/fists rise overhead and hold (hold the last frame until attack)
+        "windup": times("Charged_Ground_Slam", [0.03, 0.07, 0.09, 0.11, 0.13, 0.17, 0.30, 0.40], -1, 12),
+        "attack": seg("Charged_Ground_Slam", 0.40, 0.59, 0.95, 9, 3, 16, 1.4),
+        "hurt": lin("Hit_Reaction", 0.0, 0.45, 5, 14),
+        "death": lin("Dead", 0.0, 0.75, 12, 13),
+    },
+}
+
+C["regent"] = {
+    "model": "regent/r_a0.glb",
+    "clip_files": ["regent/r_a%d.glb" % i for i in range(5)] + ["regent/r_walk.glb"],
+    "up_axis": 1, "cell": 384, "ss": 2, "cam_size": 4.0, "center_y": 1.1, "elev": 40, "height_m": 2.4,
+    "anims": {
+        "idle": lin("Idle_02", 0, 1, 12, 8, True),
+        "move": lin("r_walk", 0, 1, 8, 11, True, {"step": [0, 4]}),
+        "charge": lin("RunFast", 0, 1, 8, 16, True, {"step": [0, 4]}),
+        "windup": times("Charged_Spell_Cast", [0.0, 0.04, 0.08, 0.11, 0.14, 0.17], -1, 10),
+        "attack": seg("Charged_Spell_Cast", 0.17, 0.26, 0.45, 8, 2, 16, 1.0),
+        # full two-phase cast: gather (0..0.26, release "hit"), then raise both arms (summon "cast" ~0.67)
+        "cast": dict(times("Charged_Spell_Cast", [0.0, 0.05, 0.10, 0.14, 0.18, 0.22, 0.26, 0.32, 0.45, 0.58, 0.62, 0.66, 0.70, 0.80, 0.92], 6, 14), events={"hit": 6, "cast": 12}),
+        "hurt": lin("Hit_Reaction", 0.0, 0.45, 5, 14),
+        "death": lin("dying_backwards", 0.0, 0.92, 12, 12),
     },
 }
 

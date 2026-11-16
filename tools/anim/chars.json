@@ -458,5 +458,247 @@
     "fps": 12
    }
   }
+ },
+ "brute": {
+  "model": "res://tools/anim/fbx_tmp/b_a0.fbx",
+  "clip_files": [
+   "res://tools/anim/fbx_tmp/b_a0.fbx",
+   "res://tools/anim/fbx_tmp/b_a1.fbx",
+   "res://tools/anim/fbx_tmp/b_a2.fbx",
+   "res://tools/anim/fbx_tmp/b_a3.fbx",
+   "res://tools/anim/fbx_tmp/b_a4.fbx"
+  ],
+  "up_axis": 2,
+  "cell": 352,
+  "ss": 2,
+  "cam_size": 3.6,
+  "center_y": 1.0,
+  "elev": 40,
+  "height_m": 2.1,
+  "anims": {
+   "idle": {
+    "clip": "Idle",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "Slow_Orc_Walk",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 10,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "windup": {
+    "yaw": 0,
+    "clip": "Charged_Ground_Slam",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 8,
+    "times": [
+     0.03,
+     0.07,
+     0.09,
+     0.11,
+     0.13,
+     0.17,
+     0.3,
+     0.4
+    ],
+    "fps": 12,
+    "loop": false,
+    "events": {}
+   },
+   "attack": {
+    "yaw": 0,
+    "clip": "Charged_Ground_Slam",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 9,
+    "times": [
+     0.4,
+     0.4408,
+     0.5077,
+     0.59,
+     0.6981,
+     0.791,
+     0.8669,
+     0.9226,
+     0.95
+    ],
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 3
+    }
+   },
+   "hurt": {
+    "clip": "Hit_Reaction",
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 5,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "clip": "Dead",
+    "from": 0.0,
+    "to": 0.75,
+    "frames": 12,
+    "fps": 13,
+    "loop": false
+   }
+  }
+ },
+ "regent": {
+  "model": "regent/r_a0.glb",
+  "clip_files": [
+   "regent/r_a0.glb",
+   "regent/r_a1.glb",
+   "regent/r_a2.glb",
+   "regent/r_a3.glb",
+   "regent/r_a4.glb",
+   "regent/r_walk.glb"
+  ],
+  "up_axis": 1,
+  "cell": 384,
+  "ss": 2,
+  "cam_size": 4.0,
+  "center_y": 1.1,
+  "elev": 40,
+  "height_m": 2.4,
+  "anims": {
+   "idle": {
+    "clip": "Idle_02",
+    "from": 0,
+    "to": 1,
+    "frames": 12,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "r_walk",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 11,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "charge": {
+    "clip": "RunFast",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 16,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "windup": {
+    "yaw": 0,
+    "clip": "Charged_Spell_Cast",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 6,
+    "times": [
+     0.0,
+     0.04,
+     0.08,
+     0.11,
+     0.14,
+     0.17
+    ],
+    "fps": 10,
+    "loop": false,
+    "events": {}
+   },
+   "attack": {
+    "yaw": 0,
+    "clip": "Charged_Spell_Cast",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 8,
+    "times": [
+     0.17,
+     0.215,
+     0.26,
+     0.317,
+     0.3661,
+     0.4061,
+     0.4355,
+     0.45
+    ],
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 2
+    }
+   },
+   "cast": {
+    "yaw": 0,
+    "clip": "Charged_Spell_Cast",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 15,
+    "times": [
+     0.0,
+     0.05,
+     0.1,
+     0.14,
+     0.18,
+     0.22,
+     0.26,
+     0.32,
+     0.45,
+     0.58,
+     0.62,
+     0.66,
+     0.7,
+     0.8,
+     0.92
+    ],
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 6,
+     "cast": 12
+    }
+   },
+   "hurt": {
+    "clip": "Hit_Reaction",
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 5,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "clip": "dying_backwards",
+    "from": 0.0,
+    "to": 0.92,
+    "frames": 12,
+    "fps": 12,
+    "loop": false
+   }
+  }
  }
 }
