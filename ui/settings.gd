@@ -4,7 +4,7 @@ extends RefCounted
 const VTheme = preload("res://ui/theme.gd")
 const PATH := "user://settings.cfg"
 
-static var values := {"master": 1.0, "music": 0.8, "sfx": 0.9}
+static var values := {"master": 1.0, "music": 0.8, "sfx": 0.9, "voice": 1.0}
 static var _loaded := false
 
 
@@ -31,7 +31,7 @@ static func apply() -> void:
 	if ml is SceneTree:
 		var a: Node = (ml as SceneTree).root.get_node_or_null("Audio")
 		if a and a.has_method("set_volumes"):
-			a.set_volumes(values["master"], values["music"], values["sfx"])
+			a.set_volumes(values["master"], values["music"], values["sfx"], values["voice"])
 
 
 ## Builds the settings panel. on_close is called after the panel frees itself.
@@ -48,7 +48,7 @@ static func build_panel(on_close: Callable) -> Control:
 	v.add_child(t)
 	v.add_child(VTheme.divider(380, 30))
 	var first: Control = null
-	for spec in [["master", "Master Volume"], ["music", "Music"], ["sfx", "Effects"]]:
+	for spec in [["master", "Master Volume"], ["music", "Music"], ["sfx", "Effects"], ["voice", "Voices"]]:
 		var key: String = spec[0]
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 18)
