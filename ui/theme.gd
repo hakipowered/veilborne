@@ -1,36 +1,136 @@
 extends RefCounted
-## Veilborne UI theme, built in code. Usage:
+## Veilborne UI kit: fonts, painted 9-slice styles, shared textures, sounds and small helpers.
 ##   const VTheme = preload("res://ui/theme.gd")
 ##   root_control.theme = VTheme.get_theme()
-## Type variations: TitleLabel, HeaderLabel, DimLabel, BigButton, SmallButton, DangerButton, CardPanel, CardPanelSelected.
+## Label variations: H1, H2, H3, Caps, Body, Dim, Quote, Gold
+## Button variations: BigButton, SmallButton, DangerButton, GhostButton, IconButton
+## Panel variations: PanelSm, Card, Plate, Ledger, Tooltip
 
-const GOLD := Color(0.86, 0.66, 0.3)
-const GOLD_BRIGHT := Color(1.0, 0.84, 0.46)
-const GOLD_DIM := Color(0.58, 0.43, 0.22)
-const EMBER := Color(1.0, 0.48, 0.16)
-const INK := Color(0.05, 0.02, 0.06)
-const PANEL_BG := Color(0.085, 0.045, 0.11, 0.94)
-const CARD_BG := Color(0.12, 0.06, 0.15, 0.95)
-const TEXT := Color(0.95, 0.88, 0.76)
-const TEXT_DIM := Color(0.72, 0.64, 0.6)
-const DANGER := Color(0.85, 0.2, 0.22)
+const GOLD := Color(0.88, 0.68, 0.32)
+const GOLD_BRIGHT := Color(1.0, 0.86, 0.52)
+const GOLD_DIM := Color(0.6, 0.45, 0.24)
+const EMBER := Color(1.0, 0.5, 0.18)
+const INK := Color(0.045, 0.02, 0.05)
+const TEXT := Color(0.96, 0.9, 0.8)
+const TEXT_DIM := Color(0.74, 0.66, 0.6)
+const DANGER := Color(0.9, 0.28, 0.24)
+const PANEL_BG := Color(0.07, 0.035, 0.08, 0.96)
+const CARD_BG := Color(0.11, 0.055, 0.12, 0.95)
+const RARITY_TINT := [Color(0.95, 0.93, 0.88), Color(0.55, 0.78, 1.0), Color(0.86, 0.55, 1.0)]
+
+## Type scale (canvas units; the canvas is always 720 tall).
+const FS_H1 := 48
+const FS_H2 := 34
+const FS_H3 := 26
+const FS_BODY := 23
+const FS_SMALL := 20
+const FS_CAPTION := 17
+
+const UI := "res://art/ui/"
 
 static var _theme: Theme = null
-static var _title_font: Font = null
+static var _fonts := {}
+static var _tex := {}
+static var _mats := {}
 
-static func get_theme() -> Theme:
-	if _theme == null:
-		_theme = build()
-	return _theme
 
-static func title_font() -> Font:
-	if _title_font == null:
-		var sf := SystemFont.new()
-		sf.font_names = PackedStringArray(["Cinzel Decorative", "Cinzel", "Trajan Pro", "Palatino Linotype", "Book Antiqua", "Georgia", "Noto Serif", "DejaVu Serif", "serif"])
-		sf.font_weight = 700
-		sf.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
-		_title_font = sf
-	return _title_font
+# =====================================================================  fonts
+
+static func font(kind: String) -> Font:
+	if _fonts.has(kind):
+		return _fonts[kind]
+	var f: Font = null
+	match kind:
+		"display":
+			f = _fv("res://fonts/CinzelDecorative-Bold.ttf", 0, 1)
+		"head":
+			f = _fv("res://fonts/Cinzel.ttf", 700, 1)
+		"caps":
+			f = _fv("res://fonts/Cinzel.ttf", 600, 3)
+		"caps_wide":
+			f = _fv("res://fonts/Cinzel.ttf", 700, 6)
+		"body":
+			f = _fv("res://fonts/AlegreyaSans-Regular.ttf", 0, 0)
+		"body_med":
+			f = _fv("res://fonts/AlegreyaSans-Medium.ttf", 0, 0)
+		"body_bold":
+			f = _fv("res://fonts/AlegreyaSans-Bold.ttf", 0, 0)
+		"italic":
+			f = _fv("res://fonts/AlegreyaItalic.ttf", 500, 0)
+	if f == null:
+		f = ThemeDB.fallback_font
+	_fonts[kind] = f
+	return f
+
+
+static func _fv(path: String, weight: int, spacing: int) -> Font:
+	if not ResourceLoader.exists(path):
+		return null
+	var base: FontFile = load(path)
+	if base == null:
+		return null
+	var v := FontVariation.new()
+	v.base_font = base
+	if weight > 0:
+		var ts := TextServerManager.get_primary_interface()
+		v.variation_opentype = {ts.name_to_tag("wght"): weight}
+	if spacing != 0:
+		v.spacing_glyph = spacing
+	return v
+
+
+# =====================================================================  textures
+
+static func tex(name: String) -> Texture2D:
+	if _tex.has(name):
+		return _tex[name]
+	var path := name if name.begins_with("res://") else UI + name + ".png"
+	var t: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	_tex[name] = t
+	return t
+
+static func boon_icon(id: String) -> Texture2D:
+	return tex("boon_" + id)
+
+static func warden_tex(id: String) -> Texture2D:
+	return tex("warden_" + id)
+
+static func portrait_tex(id: String) -> Texture2D:
+	## Large painted portrait for heroines / Ysolde / Regent / Wardens.
+	var t := tex("hero_" + id)
+	if t == null:
+		t = tex("warden_" + id)
+	return t
+
+
+static func nine(name: String, l: float, t: float, r: float, b: float, cl := -1.0, ct := -1.0, cr := -1.0, cb := -1.0, modulate := Color.WHITE) -> StyleBoxTexture:
+	var s := StyleBoxTexture.new()
+	s.texture = tex(name)
+	s.texture_margin_left = l
+	s.texture_margin_top = t
+	s.texture_margin_right = r
+	s.texture_margin_bottom = b
+	s.content_margin_left = l if cl < 0 else cl
+	s.content_margin_top = t if ct < 0 else ct
+	s.content_margin_right = r if cr < 0 else cr
+	s.content_margin_bottom = b if cb < 0 else cb
+	s.modulate_color = modulate
+	return s
+
+
+static func panel_style(small := false) -> StyleBoxTexture:
+	if small:
+		return nine("panel_sm", 56, 56, 56, 56, 34, 26, 34, 26)
+	return nine("panel", 96, 96, 96, 96, 44, 40, 44, 40)
+
+
+static func card_style(tint := Color.WHITE) -> StyleBoxTexture:
+	return nine("card", 149, 102, 149, 92, 26, 74, 26, 30, tint)
+
+
+static func plate_style(tint := Color.WHITE) -> StyleBoxTexture:
+	return nine("ribbon", 104, 32, 104, 32, 96, 10, 96, 14, tint)
+
 
 static func box(bg: Color, border: Color, border_w := 2, radius := 6, shadow := 8, shadow_col := Color(0, 0, 0, 0.55), margin_h := 16.0, margin_v := 12.0) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
@@ -48,122 +148,372 @@ static func box(bg: Color, border: Color, border_w := 2, radius := 6, shadow := 
 	s.anti_aliasing = true
 	return s
 
-static func _button_styles(t: Theme, type: String, base_bg: Color, accent: Color, mh: float, mv: float) -> void:
-	t.set_stylebox("normal", type, box(base_bg, GOLD_DIM, 2, 6, 6, Color(0, 0, 0, 0.5), mh, mv))
-	t.set_stylebox("hover", type, box(base_bg.lightened(0.12), GOLD_BRIGHT, 3, 6, 10, Color(accent.r, accent.g, accent.b, 0.35), mh, mv))
-	t.set_stylebox("pressed", type, box(accent.darkened(0.55), EMBER, 3, 6, 4, Color(accent.r, accent.g, accent.b, 0.45), mh, mv))
-	t.set_stylebox("hover_pressed", type, box(accent.darkened(0.5), GOLD_BRIGHT, 3, 6, 6, Color(accent.r, accent.g, accent.b, 0.45), mh, mv))
-	t.set_stylebox("disabled", type, box(Color(0.08, 0.06, 0.09, 0.9), Color(0.3, 0.25, 0.3), 2, 6, 0, Color(0, 0, 0, 0), mh, mv))
-	var f := box(Color(0, 0, 0, 0), GOLD_BRIGHT, 3, 7, 0, Color(0, 0, 0, 0), mh, mv)
-	f.draw_center = false
-	f.expand_margin_left = 3
-	f.expand_margin_right = 3
-	f.expand_margin_top = 3
-	f.expand_margin_bottom = 3
-	t.set_stylebox("focus", type, f)
+
+# =====================================================================  materials
+
+const _CIRCLE_SHADER := """
+shader_type canvas_item;
+uniform float feather = 0.02;
+uniform float radius = 0.5;
+void fragment() {
+	vec4 c = texture(TEXTURE, UV) * COLOR;
+	float d = distance(UV, vec2(0.5));
+	c.a *= 1.0 - smoothstep(radius - feather, radius, d);
+	COLOR = c;
+}
+"""
+
+const _SHINE_SHADER := """
+shader_type canvas_item;
+uniform float period = 6.0;
+uniform float width = 0.12;
+uniform float strength = 0.55;
+uniform vec4 shine_color : source_color = vec4(1.0, 0.95, 0.8, 1.0);
+void fragment() {
+	vec4 c = texture(TEXTURE, UV) * COLOR;
+	float t = mod(TIME, period) / period * 2.2 - 0.6;
+	float x = UV.x + (1.0 - UV.y) * 0.25;
+	float band = 1.0 - smoothstep(0.0, width, abs(x - t));
+	float lum = max(c.r, max(c.g, c.b));
+	c.rgb += shine_color.rgb * band * strength * c.a * step(0.35, lum);
+	COLOR = c;
+}
+"""
+
+const _FADE_BOTTOM_SHADER := """
+shader_type canvas_item;
+uniform float fade_start = 0.72;
+uniform float dim = 1.0;
+void fragment() {
+	vec4 c = texture(TEXTURE, UV) * COLOR;
+	c.a *= 1.0 - smoothstep(fade_start, 1.0, UV.y);
+	c.rgb *= dim;
+	COLOR = c;
+}
+"""
+
+static func material(kind: String) -> ShaderMaterial:
+	## Shared materials (do not set per-instance parameters on these).
+	if _mats.has(kind):
+		return _mats[kind]
+	var sh := Shader.new()
+	match kind:
+		"circle": sh.code = _CIRCLE_SHADER
+		"shine": sh.code = _SHINE_SHADER
+		"fade_bottom": sh.code = _FADE_BOTTOM_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	_mats[kind] = m
+	return m
+
+
+# =====================================================================  sound
+
+static func sound(name: String) -> void:
+	var ml := Engine.get_main_loop()
+	if ml is SceneTree:
+		var a: Node = (ml as SceneTree).root.get_node_or_null("Audio")
+		if a and a.has_method("ui"):
+			a.ui(name)
+
+static func music(track: String) -> void:
+	var ml := Engine.get_main_loop()
+	if ml is SceneTree:
+		var a: Node = (ml as SceneTree).root.get_node_or_null("Audio")
+		if a and a.has_method("music"):
+			a.music(track)
+
+
+# =====================================================================  theme
+
+static func get_theme() -> Theme:
+	if _theme == null:
+		_theme = build()
+	return _theme
+
 
 static func build() -> Theme:
 	var t := Theme.new()
-	t.default_font_size = 24
+	t.default_font = font("body")
+	t.default_font_size = FS_BODY
 
-	# ---- Panels
-	t.set_stylebox("panel", "Panel", box(PANEL_BG, GOLD, 2, 6, 12))
-	t.set_stylebox("panel", "PanelContainer", box(PANEL_BG, GOLD, 2, 6, 12, Color(0, 0, 0, 0.6), 18, 16))
-	t.set_type_variation("CardPanel", "PanelContainer")
-	t.set_stylebox("panel", "CardPanel", box(CARD_BG, GOLD_DIM, 2, 8, 10, Color(0, 0, 0, 0.6), 16, 14))
-	t.set_type_variation("CardPanelSelected", "PanelContainer")
-	t.set_stylebox("panel", "CardPanelSelected", box(Color(0.2, 0.08, 0.14, 0.97), GOLD_BRIGHT, 3, 8, 16, Color(1.0, 0.5, 0.15, 0.4), 16, 14))
-	t.set_type_variation("NamePlate", "PanelContainer")
-	t.set_stylebox("panel", "NamePlate", box(Color(0.07, 0.03, 0.08, 0.96), GOLD, 2, 5, 6, Color(0, 0, 0, 0.6), 18, 6))
+	# ---- panels
+	t.set_stylebox("panel", "PanelContainer", panel_style())
+	t.set_stylebox("panel", "Panel", panel_style())
+	t.set_type_variation("PanelSm", "PanelContainer")
+	t.set_stylebox("panel", "PanelSm", panel_style(true))
+	t.set_type_variation("Card", "PanelContainer")
+	t.set_stylebox("panel", "Card", card_style())
+	t.set_type_variation("Plate", "PanelContainer")
+	t.set_stylebox("panel", "Plate", plate_style())
+	t.set_type_variation("Ledger", "PanelContainer")
+	var led := box(Color(0.03, 0.012, 0.035, 0.55), Color(GOLD_DIM, 0.45), 1, 4, 0, Color(0, 0, 0, 0), 16, 10)
+	led.border_width_left = 0
+	led.border_width_right = 0
+	led.border_width_top = 0
+	t.set_stylebox("panel", "Ledger", led)
+	t.set_type_variation("Tooltip", "PanelContainer")
+	t.set_stylebox("panel", "Tooltip", panel_style(true))
+	t.set_stylebox("panel", "TooltipPanel", panel_style(true))
+	t.set_color("font_color", "TooltipLabel", TEXT)
+	t.set_font("font", "TooltipLabel", font("body"))
+	t.set_font_size("font_size", "TooltipLabel", FS_SMALL)
 
-	# ---- Labels
+	# ---- labels
 	t.set_color("font_color", "Label", TEXT)
 	t.set_color("font_outline_color", "Label", INK)
-	t.set_constant("outline_size", "Label", 4)
-	t.set_color("font_shadow_color", "Label", Color(0, 0, 0, 0.45))
+	t.set_constant("outline_size", "Label", 3)
+	t.set_color("font_shadow_color", "Label", Color(0, 0, 0, 0.5))
 	t.set_constant("shadow_offset_y", "Label", 2)
+	t.set_constant("shadow_offset_x", "Label", 0)
+	t.set_constant("line_spacing", "Label", 2)
+	_label_var(t, "H1", font("head"), FS_H1, GOLD_BRIGHT, 9)
+	_label_var(t, "H2", font("head"), FS_H2, GOLD_BRIGHT, 7)
+	_label_var(t, "H3", font("head"), FS_H3, GOLD, 5)
+	_label_var(t, "Caps", font("caps"), FS_CAPTION, GOLD, 3)
+	_label_var(t, "Body", font("body"), FS_BODY, TEXT, 3)
+	_label_var(t, "Dim", font("body"), FS_SMALL, TEXT_DIM, 3)
+	_label_var(t, "Quote", font("italic"), FS_BODY, TEXT, 3)
+	_label_var(t, "Gold", font("body_bold"), FS_BODY, GOLD_BRIGHT, 4)
 
-	t.set_type_variation("TitleLabel", "Label")
-	t.set_font("font", "TitleLabel", title_font())
-	t.set_font_size("font_size", "TitleLabel", 44)
-	t.set_color("font_color", "TitleLabel", GOLD_BRIGHT)
-	t.set_constant("outline_size", "TitleLabel", 10)
-
-	t.set_type_variation("HeaderLabel", "Label")
-	t.set_font("font", "HeaderLabel", title_font())
-	t.set_font_size("font_size", "HeaderLabel", 30)
-	t.set_color("font_color", "HeaderLabel", GOLD)
-	t.set_constant("outline_size", "HeaderLabel", 6)
-
-	t.set_type_variation("DimLabel", "Label")
-	t.set_font_size("font_size", "DimLabel", 20)
-	t.set_color("font_color", "DimLabel", TEXT_DIM)
-
-	# ---- Buttons
-	for type in ["Button"]:
-		_button_styles(t, type, Color(0.15, 0.07, 0.16, 0.96), EMBER, 22, 12)
-		t.set_color("font_color", type, TEXT)
-		t.set_color("font_hover_color", type, GOLD_BRIGHT)
-		t.set_color("font_focus_color", type, GOLD_BRIGHT)
-		t.set_color("font_pressed_color", type, Color(1, 0.97, 0.9))
-		t.set_color("font_hover_pressed_color", type, Color(1, 0.97, 0.9))
-		t.set_color("font_disabled_color", type, Color(0.5, 0.44, 0.5))
-		t.set_color("font_outline_color", type, INK)
-		t.set_constant("outline_size", type, 5)
-		t.set_font_size("font_size", type, 26)
-		t.set_font("font", type, title_font())
-		t.set_constant("h_separation", type, 10)
+	# ---- buttons (painted plates)
+	var mh := 72.0
+	t.set_stylebox("normal", "Button", nine("button", 72, 18, 72, 18, mh, 10, mh, 12))
+	t.set_stylebox("hover", "Button", nine("button_hover", 72, 18, 72, 18, mh, 10, mh, 12))
+	t.set_stylebox("pressed", "Button", nine("button_pressed", 72, 18, 72, 18, mh, 12, mh, 10))
+	t.set_stylebox("hover_pressed", "Button", nine("button_pressed", 72, 18, 72, 18, mh, 12, mh, 10))
+	t.set_stylebox("disabled", "Button", nine("button_disabled", 72, 18, 72, 18, mh, 10, mh, 12))
+	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	t.set_font("font", "Button", font("caps"))
+	t.set_font_size("font_size", "Button", 22)
+	t.set_color("font_color", "Button", TEXT)
+	t.set_color("font_hover_color", "Button", GOLD_BRIGHT)
+	t.set_color("font_focus_color", "Button", GOLD_BRIGHT)
+	t.set_color("font_pressed_color", "Button", Color(1, 0.93, 0.8))
+	t.set_color("font_hover_pressed_color", "Button", Color(1, 0.93, 0.8))
+	t.set_color("font_disabled_color", "Button", Color(0.55, 0.5, 0.5))
+	t.set_color("font_outline_color", "Button", INK)
+	t.set_constant("outline_size", "Button", 4)
+	t.set_constant("h_separation", "Button", 10)
 
 	t.set_type_variation("BigButton", "Button")
-	t.set_font_size("font_size", "BigButton", 32)
-	t.set_type_variation("SmallButton", "Button")
-	t.set_font_size("font_size", "SmallButton", 22)
-	t.set_type_variation("DangerButton", "Button")
-	t.set_stylebox("normal", "DangerButton", box(Color(0.22, 0.05, 0.07, 0.96), Color(0.7, 0.25, 0.22), 2, 6, 6, Color(0, 0, 0, 0.5), 22, 12))
-	t.set_stylebox("hover", "DangerButton", box(Color(0.36, 0.07, 0.09, 0.98), Color(1.0, 0.45, 0.35), 3, 6, 10, Color(1, 0.2, 0.1, 0.35), 22, 12))
-	t.set_color("font_hover_color", "DangerButton", Color(1, 0.8, 0.7))
-	t.set_font_size("font_size", "DangerButton", 22)
+	t.set_font_size("font_size", "BigButton", 28)
+	t.set_font("font", "BigButton", font("head"))
+	for sv in ["SmallButton", "DangerButton"]:
+		t.set_type_variation(sv, "Button")
+		var tint := Color(1.0, 0.62, 0.56) if sv == "DangerButton" else Color.WHITE
+		t.set_stylebox("normal", sv, nine("button_sm", 48, 14, 48, 14, 44, 8, 44, 9, tint))
+		t.set_stylebox("hover", sv, nine("button_hover_sm", 48, 14, 48, 14, 44, 8, 44, 9, tint))
+		t.set_stylebox("pressed", sv, nine("button_pressed_sm", 48, 14, 48, 14, 44, 9, 44, 8, tint))
+		t.set_stylebox("hover_pressed", sv, nine("button_pressed_sm", 48, 14, 48, 14, 44, 9, 44, 8, tint))
+		t.set_stylebox("disabled", sv, nine("button_disabled_sm", 48, 14, 48, 14, 44, 8, 44, 9))
+	t.set_font_size("font_size", "SmallButton", 18)
+	for sv in ["SmallButton", "DangerButton"]:
+		t.set_font("font", sv, font("caps"))
+		t.set_constant("outline_size", sv, 4)
+		t.set_color("font_outline_color", sv, INK)
+	t.set_font_size("font_size", "DangerButton", 18)
+	t.set_color("font_color", "DangerButton", Color(1, 0.78, 0.72))
+	t.set_color("font_hover_color", "DangerButton", Color(1, 0.86, 0.8))
 
-	# ---- LineEdit
-	t.set_stylebox("normal", "LineEdit", box(Color(0.04, 0.02, 0.05, 0.95), GOLD_DIM, 2, 6, 0, Color(0, 0, 0, 0), 16, 12))
-	t.set_stylebox("focus", "LineEdit", box(Color(0.06, 0.03, 0.07, 0.95), GOLD_BRIGHT, 3, 6, 0, Color(0, 0, 0, 0), 16, 12))
-	t.set_stylebox("read_only", "LineEdit", box(Color(0.06, 0.04, 0.07, 0.9), Color(0.3, 0.25, 0.3), 2, 6, 0, Color(0, 0, 0, 0), 16, 12))
+	t.set_type_variation("GhostButton", "Button")
+	for st in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
+		var e := StyleBoxEmpty.new()
+		e.content_margin_left = 20
+		e.content_margin_right = 20
+		e.content_margin_top = 6
+		e.content_margin_bottom = 6
+		t.set_stylebox(st, "GhostButton", e)
+	t.set_font("font", "GhostButton", font("caps_wide"))
+	t.set_font_size("font_size", "GhostButton", 27)
+	t.set_color("font_color", "GhostButton", Color(0.93, 0.85, 0.72))
+	t.set_constant("outline_size", "GhostButton", 6)
+
+	t.set_type_variation("IconButton", "Button")
+	for st in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
+		t.set_stylebox(st, "IconButton", StyleBoxEmpty.new())
+
+	# ---- line edit
+	t.set_stylebox("normal", "LineEdit", box(Color(0.03, 0.015, 0.035, 0.95), GOLD_DIM, 2, 4, 0, Color(0, 0, 0, 0), 16, 12))
+	t.set_stylebox("focus", "LineEdit", box(Color(0.05, 0.025, 0.055, 0.95), GOLD_BRIGHT, 2, 4, 0, Color(0, 0, 0, 0), 16, 12))
+	t.set_stylebox("read_only", "LineEdit", box(Color(0.05, 0.035, 0.06, 0.9), Color(0.3, 0.25, 0.3), 2, 4, 0, Color(0, 0, 0, 0), 16, 12))
 	t.set_color("font_color", "LineEdit", TEXT)
 	t.set_color("caret_color", "LineEdit", GOLD_BRIGHT)
 	t.set_color("selection_color", "LineEdit", Color(0.8, 0.5, 0.2, 0.4))
 	t.set_color("font_placeholder_color", "LineEdit", Color(0.55, 0.48, 0.5))
-	t.set_font_size("font_size", "LineEdit", 28)
+	t.set_font("font", "LineEdit", font("body_med"))
+	t.set_font_size("font_size", "LineEdit", 26)
 
-	# ---- Scrollbars (thick for touch)
-	var track := box(Color(0.05, 0.02, 0.06, 0.6), Color(0, 0, 0, 0), 0, 6, 0, Color(0, 0, 0, 0), 4, 4)
-	var grab := box(GOLD_DIM, Color(0, 0, 0, 0), 0, 6, 0, Color(0, 0, 0, 0), 6, 6)
-	var grab_hi := box(GOLD, Color(0, 0, 0, 0), 0, 6, 0, Color(0, 0, 0, 0), 6, 6)
+	# ---- sliders
+	var track := box(Color(0.02, 0.01, 0.02, 0.9), GOLD_DIM, 1, 6, 0, Color(0, 0, 0, 0), 0, 5)
+	var fill := box(Color(0.85, 0.5, 0.18), Color(1, 0.8, 0.45), 1, 6, 0, Color(0, 0, 0, 0), 0, 5)
+	t.set_stylebox("slider", "HSlider", track)
+	t.set_stylebox("grabber_area", "HSlider", fill)
+	t.set_stylebox("grabber_area_highlight", "HSlider", fill)
+	t.set_icon("grabber", "HSlider", tex("rosette_sm"))
+	t.set_icon("grabber_highlight", "HSlider", tex("rosette_sm"))
+	t.set_constant("center_grabber", "HSlider", 1)
+
+	# ---- scrollbars
+	var strack := box(Color(0.05, 0.02, 0.06, 0.5), Color(0, 0, 0, 0), 0, 4, 0, Color(0, 0, 0, 0), 3, 3)
+	var grab := box(GOLD_DIM, Color(0, 0, 0, 0), 0, 4, 0, Color(0, 0, 0, 0), 4, 4)
+	var grab_hi := box(GOLD, Color(0, 0, 0, 0), 0, 4, 0, Color(0, 0, 0, 0), 4, 4)
 	for sb in ["VScrollBar", "HScrollBar"]:
-		t.set_stylebox("scroll", sb, track)
+		t.set_stylebox("scroll", sb, strack)
 		t.set_stylebox("grabber", sb, grab)
 		t.set_stylebox("grabber_highlight", sb, grab_hi)
 		t.set_stylebox("grabber_pressed", sb, grab_hi)
 
-	# ---- Separators / containers
+	# ---- containers / rich text
 	t.set_constant("separation", "VBoxContainer", 12)
 	t.set_constant("separation", "HBoxContainer", 12)
-	t.set_color("font_color", "RichTextLabel", TEXT)
+	t.set_font("normal_font", "RichTextLabel", font("body"))
+	t.set_font("italics_font", "RichTextLabel", font("italic"))
+	t.set_font("bold_font", "RichTextLabel", font("body_bold"))
+	t.set_color("default_color", "RichTextLabel", TEXT)
 	t.set_color("font_outline_color", "RichTextLabel", INK)
-	t.set_constant("outline_size", "RichTextLabel", 4)
-	t.set_font_size("normal_font_size", "RichTextLabel", 26)
+	t.set_constant("outline_size", "RichTextLabel", 3)
+	t.set_font_size("normal_font_size", "RichTextLabel", FS_BODY)
+	t.set_font_size("italics_font_size", "RichTextLabel", FS_BODY)
+	t.set_font_size("bold_font_size", "RichTextLabel", FS_BODY)
 	return t
 
-## A big outlined title label (not themed via variation, so font size is free).
-static func title_label(text: String, size: int, color := GOLD_BRIGHT, outline := 12) -> Label:
+
+static func _label_var(t: Theme, name: String, f: Font, size: int, col: Color, outline: int) -> void:
+	t.set_type_variation(name, "Label")
+	t.set_font("font", name, f)
+	t.set_font_size("font_size", name, size)
+	t.set_color("font_color", name, col)
+	t.set_constant("outline_size", name, outline)
+
+
+# =====================================================================  widgets
+
+static func label(text: String, variation := "Body", size := 0, color := Color(0, 0, 0, 0)) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_override("font", title_font())
+	l.theme_type_variation = variation
+	if size > 0:
+		l.add_theme_font_size_override("font_size", size)
+	if color.a > 0.0:
+		l.add_theme_color_override("font_color", color)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+
+## A big outlined display label (font size is free).
+static func title_label(text: String, size: int, color := GOLD_BRIGHT, outline := 10, kind := "head") -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_override("font", font(kind))
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
 	l.add_theme_color_override("font_outline_color", INK)
 	l.add_theme_constant_override("outline_size", outline)
-	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
 	l.add_theme_constant_override("shadow_offset_y", 4)
 	l.add_theme_constant_override("shadow_offset_x", 0)
+	l.add_theme_constant_override("shadow_outline_size", outline + 4)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
+
+
+static func image(name_or_tex, size := Vector2.ZERO, keep := true) -> TextureRect:
+	var r := TextureRect.new()
+	r.texture = name_or_tex if name_or_tex is Texture2D else tex(String(name_or_tex))
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED if keep else TextureRect.STRETCH_SCALE
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if size != Vector2.ZERO:
+		r.custom_minimum_size = size
+	return r
+
+
+static func divider(width := 420.0, height := 36.0) -> TextureRect:
+	var d := image("divider", Vector2(width, height))
+	d.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	return d
+
+
+static func shard_icon(size := 30.0) -> TextureRect:
+	return image("shard", Vector2(size * 0.62, size))
+
+
+## Gives a button hover/press feedback + sounds. Safe to call once per button.
+static func juice(b: BaseButton, hover_scale := 1.04, press_sound := "click") -> void:
+	b.resized.connect(func(): b.pivot_offset = b.size * 0.5)
+	b.pivot_offset = b.size * 0.5
+	var on_enter := func():
+		if b.disabled:
+			return
+		sound("hover")
+		_scale_to(b, hover_scale, 0.12)
+	var on_exit := func():
+		if not b.has_focus() and not b.is_hovered():
+			_scale_to(b, 1.0, 0.15)
+	b.mouse_entered.connect(on_enter)
+	b.focus_entered.connect(func():
+		if b.is_hovered():
+			return
+		on_enter.call())
+	b.mouse_exited.connect(on_exit)
+	b.focus_exited.connect(func(): _scale_to(b, 1.0, 0.15))
+	b.button_down.connect(func(): _scale_to(b, 0.94, 0.06))
+	b.button_up.connect(func(): _scale_to(b, hover_scale if (b.is_hovered() or b.has_focus()) else 1.0, 0.18, true))
+	if press_sound != "":
+		b.pressed.connect(func(): sound(press_sound))
+
+
+static func _scale_to(c: Control, s: float, d: float, bounce := false) -> void:
+	if not is_instance_valid(c) or not c.is_inside_tree():
+		return
+	var tw := c.create_tween()
+	var p := tw.tween_property(c, "scale", Vector2(s, s), d)
+	if bounce:
+		p.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	else:
+		p.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+## Radial vignette texture (cached), color at the edges.
+static func vignette_tex(col: Color, inner := 0.45) -> Texture2D:
+	var key := "vig_%s_%.2f" % [col.to_html(), inner]
+	if _tex.has(key):
+		return _tex[key]
+	var g := Gradient.new()
+	g.set_color(0, Color(col.r, col.g, col.b, 0.0))
+	g.set_offset(0, inner)
+	g.set_color(1, col)
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.05, 1.05)
+	gt.width = 128
+	gt.height = 128
+	_tex[key] = gt
+	return gt
+
+
+static func vgrad_tex(top: Color, bottom: Color, mid := Color(0, 0, 0, -1)) -> Texture2D:
+	var key := "vg_%s_%s_%s" % [top.to_html(), bottom.to_html(), mid.to_html()]
+	if _tex.has(key):
+		return _tex[key]
+	var g := Gradient.new()
+	g.set_color(0, top)
+	g.set_color(1, bottom)
+	if mid.a >= 0.0:
+		g.add_point(0.5, mid)
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.width = 4
+	gt.height = 128
+	gt.fill_to = Vector2(0, 1)
+	_tex[key] = gt
+	return gt
+
+
+static func roman(n: int) -> String:
+	const R := ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
+	return R[clampi(n, 0, 10)]

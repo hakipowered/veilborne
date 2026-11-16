@@ -1,0 +1,193 @@
+{
+ "liora": {
+  "model": "res://tools/anim/fbx_tmp/l_a0.fbx",
+  "clip_files": [
+   "res://tools/anim/fbx_tmp/l_a0.fbx",
+   "res://tools/anim/fbx_tmp/l_a1.fbx",
+   "res://tools/anim/fbx_tmp/l_a5.fbx",
+   "res://tools/anim/fbx_tmp/l_a6.fbx",
+   "res://tools/anim/fbx_tmp/l_a7.fbx",
+   "res://tools/anim/fbx_tmp/l_a8.fbx",
+   "res://tools/anim/fbx_tmp/l_run.fbx"
+  ],
+  "up_axis": 2,
+  "cell": 256,
+  "ss": 2,
+  "cam_size": 2.7,
+  "center_y": 0.9,
+  "elev": 40,
+  "props": [
+   {
+    "type": "crescent",
+    "bone": "RightHand",
+    "pos": [
+     0,
+     0.08,
+     0
+    ],
+    "rot": [
+     0,
+     0,
+     0
+    ],
+    "curve": 1
+   },
+   {
+    "type": "crescent",
+    "bone": "LeftHand",
+    "pos": [
+     0,
+     0.08,
+     0
+    ],
+    "rot": [
+     0,
+     0,
+     0
+    ],
+    "curve": -1
+   }
+  ],
+  "anims": {
+   "idle": {
+    "clip": "Combat_Stance",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 6,
+    "loop": true,
+    "yaw": 40
+   },
+   "run": {
+    "clip": "running",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 13,
+    "loop": true,
+    "events": {
+     "step": 0,
+     "step2": 4
+    }
+   },
+   "attack1": {
+    "yaw": 40,
+    "clip": "Triple_Combo",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 8,
+    "times": [
+     0.03,
+     0.066,
+     0.1185,
+     0.18,
+     0.1966,
+     0.2102,
+     0.2201,
+     0.225
+    ],
+    "fps": 18,
+    "loop": false,
+    "events": {
+     "hit": 3
+    }
+   },
+   "attack2": {
+    "yaw": 40,
+    "clip": "Triple_Combo",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 8,
+    "times": [
+     0.215,
+     0.2478,
+     0.2959,
+     0.352,
+     0.3697,
+     0.3842,
+     0.3948,
+     0.4
+    ],
+    "fps": 18,
+    "loop": false,
+    "events": {
+     "hit": 3
+    }
+   },
+   "attack3": {
+    "yaw": 40,
+    "clip": "Triple_Combo",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 10,
+    "times": [
+     0.4,
+     0.4201,
+     0.4495,
+     0.4839,
+     0.522,
+     0.5514,
+     0.5767,
+     0.5974,
+     0.6125,
+     0.62
+    ],
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 4
+    }
+   },
+   "dash": {
+    "clip": "Quick_Step",
+    "from": 0.05,
+    "to": 0.95,
+    "frames": 7,
+    "fps": 16,
+    "loop": false
+   },
+   "special": {
+    "yaw": 0,
+    "clip": "Double_Blade_Spin",
+    "from": 0.0,
+    "to": 1.0,
+    "frames": 12,
+    "times": [
+     0.04,
+     0.07,
+     0.1,
+     0.13,
+     0.16,
+     0.19,
+     0.22,
+     0.25,
+     0.28,
+     0.3086,
+     0.3297,
+     0.34
+    ],
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 8
+    }
+   },
+   "hurt": {
+    "clip": "Hit_Reaction",
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 5,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "clip": "Shot_and_Fall",
+    "from": 0.12,
+    "to": 0.95,
+    "frames": 12,
+    "fps": 14,
+    "loop": false
+   }
+  }
+ }
+}

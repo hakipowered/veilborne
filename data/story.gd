@@ -4,14 +4,14 @@ extends RefCounted
 ## Line format everywhere: {"speaker": <id in SPEAKERS>, "text": String}
 
 const SPEAKERS := {
-	"kaela": {"name": "Kaela Ashveil", "color": Color(1.0, 0.52, 0.2), "portrait": "res://art/kaela.png"},
-	"liora": {"name": "Liora Moonbrand", "color": Color(0.7, 0.84, 1.0), "portrait": "res://art/liora.png"},
-	"ysolde": {"name": "Matron Ysolde", "color": Color(0.55, 0.95, 0.85), "portrait": "res://art/ysolde.png"},
-	"regent": {"name": "The Hollow Regent", "color": Color(0.82, 0.62, 1.0), "portrait": "res://art/regent.png"},
-	"oriel": {"name": "Oriel, Ember Queen", "color": Color(1.0, 0.45, 0.15), "portrait": ""},
-	"vessa": {"name": "Vessa of Storms", "color": Color(0.45, 0.75, 1.0), "portrait": ""},
-	"mireth": {"name": "Mireth of Tides", "color": Color(0.2, 0.85, 0.7), "portrait": ""},
-	"sable": {"name": "Sable of Thorns", "color": Color(0.75, 0.3, 0.85), "portrait": ""},
+	"kaela": {"name": "Kaela Ashveil", "color": Color(1.0, 0.52, 0.2), "portrait": "res://art/ui/hero_kaela.png"},
+	"liora": {"name": "Liora Moonbrand", "color": Color(0.7, 0.84, 1.0), "portrait": "res://art/ui/hero_liora.png"},
+	"ysolde": {"name": "Matron Ysolde", "color": Color(0.55, 0.95, 0.85), "portrait": "res://art/ui/hero_ysolde.png"},
+	"regent": {"name": "The Hollow Regent", "color": Color(0.82, 0.62, 1.0), "portrait": "res://art/ui/hero_regent.png"},
+	"oriel": {"name": "Oriel, Ember Queen", "color": Color(1.0, 0.45, 0.15), "portrait": "res://art/ui/warden_oriel.png"},
+	"vessa": {"name": "Vessa of Storms", "color": Color(0.45, 0.75, 1.0), "portrait": "res://art/ui/warden_vessa.png"},
+	"mireth": {"name": "Mireth of Tides", "color": Color(0.2, 0.85, 0.7), "portrait": "res://art/ui/warden_mireth.png"},
+	"sable": {"name": "Sable of Thorns", "color": Color(0.75, 0.3, 0.85), "portrait": "res://art/ui/warden_sable.png"},
 	"narrator": {"name": "", "color": Color(0.95, 0.85, 0.6), "portrait": ""},
 }
 
