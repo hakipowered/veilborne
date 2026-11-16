@@ -2,8 +2,8 @@ extends CanvasLayer
 ## Checks the repo's downloads branch for a newer build on launch and offers a one-tap update.
 ## The URLs never change, so one link always installs the newest version.
 
-const VERSION_CODE := 5
-const VERSION_NAME := "0.3.1"
+const VERSION_CODE := 6
+const VERSION_NAME := "0.3.2"
 const REPO := "hakipowered/veilborne"
 ## The "downloads" branch always holds exactly the newest build.
 const MANIFEST_URL := "https://raw.githubusercontent.com/" + REPO + "/downloads/version.json"
