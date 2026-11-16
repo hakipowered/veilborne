@@ -16,6 +16,7 @@ uniform float seam_ink = 0.012;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform vec4 grime : source_color = vec4(0.10, 0.16, 0.10, 1.0);
 uniform float ambient = 0.62;
+uniform float checker = 0.0;     // 1: alternate atlas rows 0-1 / 2-3 in a checkerboard (two-tone marble)
 
 uniform vec2 sigil_center = vec2(0.0);
 uniform float sigil_radius = 430.0;
@@ -61,6 +62,9 @@ void fragment() {
 	vec2 f = fract(uv);
 	float h = hash(cell);
 	float idx = floor(h * 16.0);
+	if (checker > 0.5) {
+		idx = floor(h * 8.0) + 8.0 * mod(cell.x + cell.y, 2.0);
+	}
 	float r = floor(fract(h * 7.31) * 4.0);
 	vec2 lf = rot_q(f, r);
 	vec2 auv = (vec2(mod(idx, 4.0), floor(idx / 4.0)) + inset + lf * (1.0 - 2.0 * inset)) * 0.25;
