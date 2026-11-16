@@ -19,15 +19,26 @@ rm -rf build && mkdir -p build
 "$GODOT" --headless --path . --export-release "Android" build/unsigned.apk 2>&1 | grep -E "export: end|ERROR" || true
 java -jar "$SIGNER" -a build/unsigned.apk --ks "$KEYSTORE" --ksAlias veilborne --ksPass android --ksKeyPass android -o build/signed >/dev/null
 mv build/signed/*.apk build/Veilborne.apk
-APK_URL="https://github.com/$REPO/releases/latest/download/Veilborne.apk"
+APK_URL="https://raw.githubusercontent.com/$REPO/downloads/Veilborne.apk"
 python3 - "$CODE" "$NAME" "$NOTES" "$APK_URL" > build/version.json <<'PY'
 import json, sys
 print(json.dumps({"version_code": int(sys.argv[1]), "version_name": sys.argv[2], "notes": sys.argv[3], "apk_url": sys.argv[4]}))
 PY
-BODY=$(python3 -c 'import json,sys; print(json.dumps({"tag_name":"v"+sys.argv[1],"name":"Veilborne v"+sys.argv[1],"body":sys.argv[2]+"\n\nDownload: https://github.com/"+sys.argv[3]+"/releases/latest/download/Veilborne.apk","make_latest":"true"}))' "$NAME" "$NOTES" "$REPO")
-REL_ID=$(echo "$BODY" | gh api -X POST "repos/$REPO/releases" --input - --jq .id)
-for f in Veilborne.apk version.json; do
-  ct=$([ "$f" = version.json ] && echo application/json || echo application/vnd.android.package-archive)
-  gh api -X POST -H "Content-Type: $ct" "https://uploads.github.com/repos/$REPO/releases/$REL_ID/assets?name=$f" --input "build/$f" --jq .browser_download_url
-done
-echo "Published. Permanent download link: $APK_URL"
+# Publish to the single-commit "downloads" branch (replaced each release, so the repo stays small).
+PUB=$(mktemp -d)
+cp build/Veilborne.apk build/version.json "$PUB/"
+cat > "$PUB/README.md" <<MD
+# Veilborne v$NAME
+
+**Download (always the newest version):** https://raw.githubusercontent.com/$REPO/downloads/Veilborne.apk
+
+$NOTES
+
+Installed copies check for updates on launch and offer a one-tap update.
+MD
+git -C "$PUB" init -q -b downloads
+git -C "$PUB" add -A
+git -C "$PUB" -c user.name="$(git config user.name || echo hakipowered)" -c user.email="$(git config user.email || echo noreply@github.com)" commit -qm "Veilborne v$NAME"
+git -C "$PUB" push -f "$(git remote get-url origin)" downloads
+rm -rf "$PUB"
+echo "Published v$NAME. Permanent download link: $APK_URL"

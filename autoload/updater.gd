@@ -1,13 +1,14 @@
 extends CanvasLayer
-## Checks GitHub Releases for a newer build on launch and offers a one-tap update.
-## The newest release always carries version.json + Veilborne.apk, so these URLs never change.
+## Checks the repo's downloads branch for a newer build on launch and offers a one-tap update.
+## The URLs never change, so one link always installs the newest version.
 
 const VERSION_CODE := 3
 const VERSION_NAME := "0.2.0"
 const REPO := "hakipowered/veilborne"
-const MANIFEST_URL := "https://github.com/" + REPO + "/releases/latest/download/version.json"
-const APK_URL := "https://github.com/" + REPO + "/releases/latest/download/Veilborne.apk"
-const DOWNLOAD_PAGE := "https://github.com/" + REPO + "/releases/latest"
+## The "downloads" branch always holds exactly the newest build.
+const MANIFEST_URL := "https://raw.githubusercontent.com/" + REPO + "/downloads/version.json"
+const APK_URL := "https://raw.githubusercontent.com/" + REPO + "/downloads/Veilborne.apk"
+const DOWNLOAD_PAGE := "https://github.com/" + REPO + "/tree/downloads"
 
 var _http: HTTPRequest
 var _panel: Control
