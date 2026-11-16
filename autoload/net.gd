@@ -53,7 +53,7 @@ func host_game(hero: String) -> Error:
 	p.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	multiplayer.multiplayer_peer = p
 	online = true
-	lobby = [{"peer": 1, "local_index": 0, "hero": hero}]
+	lobby = [{"peer": 1, "local_index": 0, "hero": hero, "weapon": Game.weapon_for(hero), "aspect": Game.run_aspect}]
 	lobby_changed.emit()
 	return OK
 
@@ -73,7 +73,7 @@ func join_game(ip: String, hero: String) -> Error:
 var _join_hero := "kaela"
 
 func _say_hello() -> void:
-	lobby_hello.rpc_id(1, _join_hero)
+	lobby_hello.rpc_id(1, _join_hero, Game.weapon_for(_join_hero), Game.run_aspect)
 
 func close() -> void:
 	if multiplayer.multiplayer_peer:
@@ -109,7 +109,7 @@ func _process(delta: float) -> void:
 # ---------------------------------------------------------------- lobby
 
 @rpc("any_peer", "call_remote", "reliable")
-func lobby_hello(hero: String) -> void:
+func lobby_hello(hero: String, weapon: String, aspect: int) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := multiplayer.get_remote_sender_id()
@@ -118,7 +118,7 @@ func lobby_hello(hero: String) -> void:
 	for p in lobby:
 		if p["peer"] == id:
 			return
-	lobby.append({"peer": id, "local_index": 0, "hero": hero})
+	lobby.append({"peer": id, "local_index": 0, "hero": hero, "weapon": weapon, "aspect": aspect})
 	lobby_update.rpc(lobby)
 	lobby_changed.emit()
 
@@ -147,6 +147,32 @@ func change_my_hero(hero: String) -> void:
 		else:
 			set_hero.rpc_id(1, hero)
 	lobby_changed.emit()
+	if Game.run_weapon == "":
+		change_my_loadout(Game.weapon_for(hero), 0) # default weapon follows the heroine
+
+## Weapon + aspect for this device's heroine (picked before the run).
+func change_my_loadout(weapon: String, aspect: int) -> void:
+	for p in lobby:
+		if p["peer"] == my_id():
+			p["weapon"] = weapon
+			p["aspect"] = aspect
+	if online:
+		if multiplayer.is_server():
+			lobby_update.rpc(lobby)
+		else:
+			set_loadout.rpc_id(1, weapon, aspect)
+	lobby_changed.emit()
+
+@rpc("any_peer", "call_remote", "reliable")
+func set_loadout(weapon: String, aspect: int) -> void:
+	var id := multiplayer.get_remote_sender_id()
+	for p in lobby:
+		if p["peer"] == id:
+			p["weapon"] = weapon
+			p["aspect"] = aspect
+	if multiplayer.is_server():
+		lobby_update.rpc(lobby)
+	lobby_changed.emit()
 
 @rpc("authority", "call_local", "reliable")
 func begin_run(seed_value: int, players: Array) -> void:
@@ -171,8 +197,8 @@ func hero_state(key: String, s: Array) -> void:
 	if arena: arena.net_hero_state(key, s)
 
 @rpc("any_peer", "call_remote", "reliable")
-func hero_action(key: String, action: String, pos: Vector2, dir: Vector2, seq: int) -> void:
-	if arena: arena.net_hero_action(key, action, pos, dir, seq)
+func hero_action(key: String, action: String, pos: Vector2, dir: Vector2, seq: int, aim: Vector2) -> void:
+	if arena: arena.net_hero_action(key, action, pos, dir, seq, aim)
 
 @rpc("any_peer", "call_remote", "reliable")
 func hero_boons(key: String, boons: Dictionary, max_hp: int) -> void:
@@ -191,5 +217,5 @@ func projectile_consumed(id: int) -> void:
 	if arena: arena.remove_projectile(id)
 
 @rpc("any_peer", "call_remote", "reliable")
-func request_door() -> void:
-	if arena and multiplayer.is_server(): arena.try_advance()
+func request_door(door: int) -> void:
+	if arena and multiplayer.is_server(): arena.try_advance(door)

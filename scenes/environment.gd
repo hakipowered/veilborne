@@ -211,6 +211,14 @@ func get_obstacles() -> Array:
 func get_door_pos() -> Vector2:
 	return _door
 
+## Exit spots for "choose your next chamber": [main gate, a second spot in front of the side wall
+## where the arena stands its own veil arch]. Rooms without a gate return only the gate spot.
+func get_door_positions() -> Array:
+	if not _has_gate:
+		return [_door]
+	var side := -1.0 if posmod(room_index, 2) == 0 else 1.0
+	return [_door, Vector2(side * half.x * 0.3, -half.y * 0.52)]
+
 func set_door_open(open: bool) -> void:
 	if open == _door_open:
 		return

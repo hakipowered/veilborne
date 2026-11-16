@@ -8,6 +8,10 @@ var move := Vector2.ZERO
 var attack := false
 var special := false
 var dash := false
+## Aimed special: while the Special button is held, dragging moves the landing reticle.
+## -1..1 offset (ZERO = no drag: the heroine auto-aims). Read by hero.gd.
+var special_aim := Vector2.ZERO
+const AIM_DRAG := 130.0
 
 const JOY_RADIUS := 92.0
 const SPECIAL_CD := 2.6
@@ -72,13 +76,17 @@ func _recompute() -> void:
 	attack = false
 	special = false
 	dash = false
+	special_aim = Vector2.ZERO
 	for t in _touches.values():
 		match t["role"]:
 			"joy":
 				var d: Vector2 = (t["pos"] - t["origin"]) / JOY_RADIUS
 				move = d.limit_length(1.0) if d.length() > 0.15 else Vector2.ZERO
 			"attack": attack = true
-			"special": special = true
+			"special":
+				special = true
+				var sd: Vector2 = (t["pos"] - t["origin"]) / AIM_DRAG
+				special_aim = sd.limit_length(1.0) if sd.length() > 0.18 else Vector2.ZERO
 			"dash": dash = true
 	queue_redraw()
 
@@ -120,7 +128,7 @@ func _draw() -> void:
 		var ready := 1.0
 		if is_instance_valid(hero):
 			if key == "special":
-				ready = 1.0 - clampf(hero.special_cd / SPECIAL_CD, 0.0, 1.0)
+				ready = 1.0 - clampf(hero.special_cd / maxf(0.1, float(hero.special_cd_max)), 0.0, 1.0)
 			elif key == "dash":
 				ready = 1.0 if hero.dash_charges > 0 else 0.3
 		var a := 0.92 if ready >= 1.0 else 0.6
@@ -138,6 +146,14 @@ func _draw() -> void:
 			draw_texture_rect(g, Rect2(ctr - Vector2(gw, gs) * 0.5, Vector2(gw, gs)), false, Color(1, 1, 1, 1.0 if ready >= 1.0 else 0.4))
 		if ready < 1.0:
 			draw_arc(ctr, r * 0.66, -PI / 2, -PI / 2 + TAU * ready, 40, Color(col.r, col.g, col.b, 0.95), 5.0, true)
+		if key == "special" and held:
+			# aim stick: a gilded knob dragged out of the medallion
+			var tip := ctr + special_aim * r * 1.5
+			draw_arc(ctr, r * 1.5, 0, TAU, 40, Color(col.r, col.g, col.b, 0.45), 3.0, true)
+			if special_aim != Vector2.ZERO:
+				draw_line(ctr, tip, Color(col.r, col.g, col.b, 0.8), 5.0, true)
+			if _orb:
+				draw_texture_rect(_orb, Rect2(tip - Vector2(26, 26), Vector2(52, 52)), false)
 		var ly := ctr.y + r + 18.0
 		draw_string_outline(font, Vector2(ctr.x - 80, ly), info[2], HORIZONTAL_ALIGNMENT_CENTER, 160, 15, 5, Color(0.03, 0.01, 0.04, 0.85))
 		draw_string(font, Vector2(ctr.x - 80, ly), info[2], HORIZONTAL_ALIGNMENT_CENTER, 160, 15, Color(1, 0.92, 0.78, 0.85))

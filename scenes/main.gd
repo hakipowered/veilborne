@@ -30,6 +30,10 @@ var _shard_label: Label
 var _shop_box: VBoxContainer
 var _hero_tiles := {}
 var _hero_info: Label
+var _weapon_btns := {}
+var _weapon_info: Label
+var _aspect_btn: Button
+var _unlock_btn: Button
 var _lobby_box: VBoxContainer
 var _begin_btn: Button
 var _p2_label: Label
@@ -116,6 +120,8 @@ func _new_screen(name_: String) -> Control:
 	_shop_box = null
 	_hero_tiles = {}
 	_hero_info = null
+	_weapon_info = null
+	_weapon_btns = {}
 	_lobby_box = null
 	_begin_btn = null
 	_p2_label = null
@@ -1039,6 +1045,7 @@ func show_sanctum() -> void:
 	_hero_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hero_info.add_theme_color_override("font_color", VTheme.TEXT)
 	mid.add_child(_hero_info)
+	_build_weapon_picker(mid)
 	if coop_kind == "local":
 		var p2 := HBoxContainer.new()
 		p2.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1105,10 +1112,120 @@ func show_sanctum() -> void:
 	_focus_first(_begin_btn)
 
 
+# ---- weapon + aspect picker (temporary home until the armory exists)
+
+func _build_weapon_picker(parent: Control) -> void:
+	_weapon_btns = {}
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	parent.add_child(row)
+	var wl := _label("WEAPON", "Caps", 15)
+	wl.add_theme_color_override("font_color", VTheme.GOLD_BRIGHT)
+	row.add_child(wl)
+	for wid in Game.WEAPON_ORDER:
+		var b := Button.new()
+		b.theme_type_variation = "IconButton"
+		b.custom_minimum_size = Vector2(58, 58)
+		b.focus_mode = Control.FOCUS_ALL
+		b.tooltip_text = String(Game.WEAPONS[wid]["name"])
+		var orb := VTheme.image("orb", Vector2.ZERO, false)
+		orb.set_anchors_preset(Control.PRESET_FULL_RECT)
+		b.add_child(orb)
+		var ic := VTheme.image(String(Game.WEAPONS[wid]["icon"]))
+		ic.set_anchors_preset(Control.PRESET_FULL_RECT)
+		ic.offset_left = 10; ic.offset_top = 10; ic.offset_right = -10; ic.offset_bottom = -10
+		b.add_child(ic)
+		VTheme.juice(b, 1.08, "click")
+		b.pressed.connect(func(): _pick_weapon(wid))
+		row.add_child(b)
+		_weapon_btns[wid] = b
+	var arow := HBoxContainer.new()
+	arow.alignment = BoxContainer.ALIGNMENT_CENTER
+	arow.add_theme_constant_override("separation", 8)
+	row.add_child(arow)
+	_aspect_btn = _button("", _cycle_aspect, "SmallButton", 300)
+	arow.add_child(_aspect_btn)
+	_unlock_btn = _button("", _unlock_aspect, "SmallButton", 150, "confirm")
+	arow.add_child(_unlock_btn)
+	_weapon_info = _label("", "Body", 15)
+	_weapon_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_weapon_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_weapon_info.custom_minimum_size = Vector2(520, 0)
+	_weapon_info.add_theme_color_override("font_color", VTheme.TEXT)
+	parent.add_child(_weapon_info)
+
+
+func _cur_weapon() -> String:
+	return Game.weapon_for(_my_hero())
+
+
+## Aspect shown in the picker (may be a locked one being previewed).
+var _aspect_view := -1
+
+
+func _pick_weapon(wid: String) -> void:
+	VTheme.sound("confirm")
+	Game.set_loadout(wid, 0)
+	_aspect_view = 0
+	_apply_loadout()
+
+
+func _cycle_aspect() -> void:
+	var w := _cur_weapon()
+	var n: int = Game.WEAPONS[w]["aspects"].size()
+	var cur := _aspect_view if _aspect_view >= 0 else Game.run_aspect
+	_aspect_view = (cur + 1) % n
+	if Game.aspect_unlocked(w, _aspect_view):
+		Game.set_loadout(w, _aspect_view)
+	_apply_loadout()
+
+
+func _unlock_aspect() -> void:
+	var w := _cur_weapon()
+	if _aspect_view < 0 or not Game.unlock_aspect(w, _aspect_view):
+		return
+	Game.set_loadout(w, _aspect_view)
+	_apply_loadout()
+	if is_instance_valid(_shard_label):
+		_shard_label.text = str(int(Game.data.get("shards", 0)))
+	_refresh_shop()
+
+
+func _apply_loadout() -> void:
+	Game.save_slot()
+	if Net.online:
+		Net.change_my_loadout(_cur_weapon(), Game.run_aspect)
+	_refresh_weapons()
+
+
+func _refresh_weapons() -> void:
+	if not is_instance_valid(_weapon_info):
+		return
+	var w := _cur_weapon()
+	var wd: Dictionary = Game.WEAPONS[w]
+	for wid in _weapon_btns.keys():
+		var b: Button = _weapon_btns[wid]
+		if is_instance_valid(b):
+			b.modulate = Color(1, 1, 1) if wid == w else Color(0.55, 0.5, 0.58)
+			b.scale = Vector2.ONE * (1.08 if wid == w else 1.0)
+			b.pivot_offset = b.custom_minimum_size * 0.5
+	var av := _aspect_view if _aspect_view >= 0 else Game.run_aspect
+	var ad := Game.aspect_def(w, av)
+	var unlocked := Game.aspect_unlocked(w, av)
+	_aspect_btn.text = "%s  ▸" % String(ad.get("name", "")) if unlocked else "%s  (locked)  ▸" % String(ad.get("name", ""))
+	var cost := Game.aspect_cost(w, av)
+	_unlock_btn.visible = not unlocked
+	_unlock_btn.text = "Unlock · %d" % cost
+	_unlock_btn.disabled = int(Game.data.get("shards", 0)) < cost
+	_weapon_info.text = "%s  ·  ATTACK %d  ·  %s %d\n%s" % [String(wd["name"]).to_upper(), int(wd["attack"]), String(wd["special_name"]).to_upper(), int(wd["special"]), String(ad.get("desc", ""))]
+	_weapon_info.tooltip_text = String(wd["desc"])
+
+
 func _hero_tile(parent: Control, hid: String, w: float) -> Button:
 	var b := Button.new()
 	b.theme_type_variation = "IconButton"
-	b.custom_minimum_size = Vector2(w, 400)
+	b.custom_minimum_size = Vector2(w, 300)
 	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	b.focus_mode = Control.FOCUS_ALL
 	b.pressed.connect(func(): _pick_hero(hid))
@@ -1238,7 +1355,8 @@ func _refresh_heroes() -> void:
 		tag.text = t
 	if is_instance_valid(_hero_info):
 		var def: Dictionary = Game.HEROES[mine]
-		_hero_info.text = "%s\nHEALTH %d  ·  SPEED %d  ·  ATTACK %d  ·  SPECIAL %d" % [String(def["title"]).to_upper(), int(def["hp"]), int(def["speed"]), int(def["attack"]), int(def["special"])]
+		_hero_info.text = "%s  ·  HEALTH %d  ·  SPEED %d" % [String(def["title"]).to_upper(), int(def["hp"]), int(def["speed"])]
+	_refresh_weapons()
 	if is_instance_valid(_p2_label):
 		_p2_label.text = "Player 2: %s" % String(Game.HEROES[p2_hero]["name"]).split(" ")[0]
 
@@ -1431,6 +1549,8 @@ func start_arena() -> void:
 	_shop_box = null
 	_hero_tiles = {}
 	_hero_info = null
+	_weapon_info = null
+	_weapon_btns = {}
 	_lobby_box = null
 	_begin_btn = null
 	_p2_label = null

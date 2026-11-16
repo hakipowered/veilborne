@@ -197,9 +197,13 @@ func refresh() -> void:
 				continue
 			var info: Dictionary = h.boons[id]
 			row.add_child(_boon_chip(String(id), int(info.get("level", 1)), int(info.get("rarity", 0))))
+		var forge: Dictionary = h.boons.get("_forge", {})
+		for id in forge.keys():
+			var info: Dictionary = forge[id]
+			row.add_child(_boon_chip(String(id), int(info.get("level", 1)), int(info.get("rarity", 0)), true))
 
 
-func _boon_chip(id: String, level: int, rarity: int) -> Control:
+func _boon_chip(id: String, level: int, rarity: int, forge := false) -> Control:
 	var c := Control.new()
 	c.custom_minimum_size = Vector2(42, 42)
 	c.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -210,7 +214,10 @@ func _boon_chip(id: String, level: int, rarity: int) -> Control:
 	var sb := VTheme.box(Color(0.06, 0.03, 0.07, 0.85), rc.lerp(VTheme.GOLD, 0.35), 2, 21, 4, Color(0, 0, 0, 0.5), 0, 0)
 	ring.add_theme_stylebox_override("panel", sb)
 	c.add_child(ring)
-	var ic := VTheme.image(VTheme.boon_icon(id), Vector2.ZERO, false)
+	var ictex := VTheme.boon_icon(id)
+	if forge:
+		ictex = VTheme.tex(String(Game.WEAPONS.get(String(Game.forge_by_id(id).get("weapon", "")), {}).get("icon", "reward_forge")))
+	var ic := VTheme.image(ictex, Vector2.ZERO, forge)
 	ic.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ic.offset_left = 3; ic.offset_top = 3; ic.offset_right = -3; ic.offset_bottom = -3
 	c.add_child(ic)
@@ -222,15 +229,15 @@ func _boon_chip(id: String, level: int, rarity: int) -> Control:
 	c.gui_input.connect(func(e: InputEvent):
 		if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
 			c.accept_event()
-			_show_tooltip(id, level, rarity, c))
+			_show_tooltip(id, level, rarity, c, forge))
 	return c
 
 
-func _show_tooltip(id: String, level: int, rarity: int, at: Control) -> void:
+func _show_tooltip(id: String, level: int, rarity: int, at: Control, forge := false) -> void:
 	if is_instance_valid(_tooltip):
 		_tooltip.queue_free()
-	var b := Game.boon_by_id(id)
-	var pat: Dictionary = Game.PATRONS.get(b.get("patron", ""), {})
+	var b := Game.boon_by_id(id) if not forge else Game.forge_by_id(id)
+	var pat: Dictionary = Game.PATRONS.get(b.get("patron", ""), {}) if not forge else {"name": "Forge"}
 	var t := PanelContainer.new()
 	t.theme_type_variation = "PanelSm"
 	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -243,7 +250,7 @@ func _show_tooltip(id: String, level: int, rarity: int, at: Control) -> void:
 	var r := VTheme.label("%s  ·  %s" % [String(Game.RARITY_NAMES[rarity]).to_upper(), String(pat.get("name", "")).to_upper()], "Caps", 13)
 	r.add_theme_color_override("font_color", Game.RARITY_COLORS[rarity])
 	v.add_child(r)
-	var d := VTheme.label(Game.boon_text(id, rarity), "Body", 19)
+	var d := VTheme.label(Game.boon_text(id, rarity) if not forge else Game.forge_text(id, rarity), "Body", 19)
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.custom_minimum_size = Vector2(270, 0)
 	v.add_child(d)
@@ -413,7 +420,7 @@ func _draw_bars() -> void:
 			if _tex_shard:
 				drawer.draw_texture_rect(_tex_shard, Rect2(px + d * 20.0, by + 35.0, 15, 26), false, Color(1, 1, 1) if lit else Color(0.22, 0.2, 0.26, 0.9))
 		# special: gilded orb + cooldown ring
-		var sp := 1.0 - clampf(h.special_cd / SPECIAL_CD, 0.0, 1.0)
+		var sp := 1.0 - clampf(h.special_cd / maxf(0.1, float(h.special_cd_max)), 0.0, 1.0)
 		var sc := Vector2(bx + 400.0 + 26.0, by + 18.0)
 		if _tex_orb:
 			drawer.draw_texture_rect(_tex_orb, Rect2(sc - Vector2(26, 26), Vector2(52, 52)), false)
@@ -461,14 +468,23 @@ func _text_c(pos: Vector2, width: float, text: String, size: int, col: Color, f:
 
 # ---------------------------------------------------------------- boon choice
 
+## Forge reward: 3 weapon upgrades as cards (same card layout as boons). choices: Game.roll_forge().
+func show_forge_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
+	show_boon_choice(hero, choices, on_pick)
+
+
 func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 	if boon_panel and is_instance_valid(boon_panel):
 		boon_panel.queue_free()
 	if choices.is_empty():
 		return
+	var forge := bool(choices[0].get("forge", false))
 	var first: Dictionary = Game.boon_by_id(choices[0]["id"])
 	var patron_id := String(first.get("patron", "oriel"))
 	var patron: Dictionary = Game.PATRONS.get(patron_id, {"name": "", "color": GOLD})
+	if forge:
+		var wd: Dictionary = Game.WEAPONS.get(String(hero.weapon_id), {})
+		patron = {"name": String(wd.get("name", "")), "color": wd.get("color", GOLD)}
 	var pcol: Color = patron["color"]
 	var vs := root.get_viewport_rect().size
 	VTheme.sound("boon")
@@ -490,7 +506,7 @@ func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 	_fade_node(ov, 0.25)
 
 	# the Warden herself, sliding in from the left
-	var wt := VTheme.warden_tex(patron_id)
+	var wt := VTheme.warden_tex(patron_id) if not forge else null
 	var cards_w := 3.0 * 300.0 + 2.0 * 22.0
 	var card_x0 := (vs.x - cards_w) * 0.5
 	if wt:
@@ -514,11 +530,14 @@ func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 	var who := ""
 	if local_heroes.size() > 1:
 		who = "PLAYER %d  ·  " % (local_heroes.find(hero) + 1)
-	var head := VTheme.title_label("%sA GIFT FROM %s" % [who, String(patron["name"]).to_upper()], 26, pcol.lightened(0.35), 7, "caps")
+	var head_txt := "%sA GIFT FROM %s" % [who, String(patron["name"]).to_upper()]
+	if forge:
+		head_txt = "%sTHE FORGE  ·  TEMPER YOUR %s" % [who, String(patron["name"]).to_upper()]
+	var head := VTheme.title_label(head_txt, 26, pcol.lightened(0.35), 7, "caps")
 	head.position = Vector2(0, 16)
 	head.size = Vector2(vs.x, 40)
 	ov.add_child(head)
-	var line_txt := str(StoryData.warden_line(patron_id))
+	var line_txt := str(StoryData.warden_line(patron_id)) if not forge else "Steel remembers every hand that shaped it. Choose what it becomes."
 	var line := VTheme.label("“%s”" % line_txt, "Quote", 21)
 	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -562,9 +581,13 @@ func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 
 
 func _boon_card(c: Dictionary, _hero: Node) -> Button:
-	var b := Game.boon_by_id(c["id"])
+	var forge := bool(c.get("forge", false))
+	var b := Game.boon_by_id(c["id"]) if not forge else Game.forge_by_id(c["id"])
 	var pid := String(b.get("patron", "oriel"))
 	var pat: Dictionary = Game.PATRONS.get(pid, {"name": "", "color": GOLD})
+	if forge:
+		var wd: Dictionary = Game.WEAPONS.get(String(b.get("weapon", "")), {})
+		pat = {"name": "Forge", "color": wd.get("color", GOLD)}
 	var r: int = int(c["rarity"])
 	var rcol: Color = VTheme.RARITY_TINT[clampi(r, 0, 2)]
 	var btn := Button.new()
@@ -593,12 +616,12 @@ func _boon_card(c: Dictionary, _hero: Node) -> Button:
 	glow.position = Vector2(40, 50)
 	glow.size = Vector2(220, 200)
 	btn.add_child(glow)
-	var ic := VTheme.image(VTheme.boon_icon(String(c["id"])), Vector2.ZERO)
+	var ic := VTheme.image(VTheme.boon_icon(String(c["id"])) if not forge else VTheme.tex(String(Game.WEAPONS.get(String(b.get("weapon", "")), {}).get("icon", "reward_forge"))), Vector2.ZERO)
 	ic.position = Vector2(82, 66)
 	ic.size = Vector2(136, 136)
 	btn.add_child(ic)
 	# tiny warden face in the crest socket
-	var face := VTheme.image(VTheme.tex("face_" + pid), Vector2.ZERO, false)
+	var face := VTheme.image(VTheme.tex("face_" + pid) if not forge else VTheme.tex("reward_forge"), Vector2.ZERO, forge)
 	face.position = Vector2(150 - 20, 20)
 	face.size = Vector2(40, 40)
 	btn.add_child(face)
@@ -618,7 +641,7 @@ func _boon_card(c: Dictionary, _hero: Node) -> Button:
 	v.add_child(rl)
 	var dv := VTheme.divider(220, 22)
 	v.add_child(dv)
-	var d := VTheme.label(Game.boon_text(String(c["id"]), r), "Body", 21)
+	var d := VTheme.label(Game.boon_text(String(c["id"]), r) if not forge else Game.forge_text(String(c["id"]), r), "Body", 21)
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	d.custom_minimum_size = Vector2(236, 0)

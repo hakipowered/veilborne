@@ -417,6 +417,17 @@ func take_damage(amount: float, crit: bool, from_pos: Vector2, attacker_key: Str
 	_apply_damage(amount)
 
 
+## HOST only: drag toward a point (chain scythe yank, vortex). Heavy foes resist.
+func pull(target: Vector2, strength: float) -> void:
+	if _dead:
+		return
+	var to := target - position
+	var d := to.length()
+	if d < 8.0:
+		return
+	_knock += to / d * minf(strength, sqrt(2800.0 * d) * 0.85) / _mass
+
+
 func _apply_damage(amount: float) -> void:
 	if _dead:
 		return
