@@ -45,6 +45,10 @@ func _ready() -> void:
 		await _probe(args["probe"])
 		get_tree().quit()
 		return
+	if args.has("stride"):
+		_stride(args["stride"], args.get("rfile", ""))
+		get_tree().quit()
+		return
 	if args.has("list"):
 		print("CLIPS: ", player.get_animation_list())
 		get_tree().quit()
@@ -193,6 +197,25 @@ func _load_procedural() -> void:
 	src.free()
 
 
+var _holders := []   # [holder, bone index, base rotation_degrees]
+
+
+## anims[an]["prop_lock"] = [[rx, ry, rz], ...] (one per prop, degrees, character space: +Z forward, +Y up):
+## keeps the weapon at that orientation while it follows the hand (a steady spear instead of one flailing with the
+## arm swing). Without it the props keep their grip rotation.
+func _lock_props(ad: Dictionary) -> void:
+	var locks: Array = ad.get("prop_lock", [])
+	for k in _holders.size():
+		var h: Node3D = _holders[k][0]
+		if k >= locks.size() or locks[k] == null:
+			h.rotation_degrees = _holders[k][2]
+			continue
+		var r: Array = locks[k]
+		var want := model.global_transform.basis.orthonormalized() * Basis.from_euler(Vector3(deg_to_rad(r[0]), deg_to_rad(r[1]), deg_to_rad(r[2])))
+		var att := (skel.global_transform * skel.get_bone_global_pose(_holders[k][1])).basis.orthonormalized()
+		h.basis = (att.inverse() * want).orthonormalized()
+
+
 func _attach_props() -> void:
 	if skel == null:
 		return
@@ -217,6 +240,7 @@ func _attach_props() -> void:
 				rot = [float(parts[0]), float(parts[1]), float(parts[2])]
 		holder.position = Vector3(off[0], off[1], off[2])
 		holder.rotation_degrees = Vector3(rot[0], rot[1], rot[2])
+		_holders.append([holder, bi, holder.rotation_degrees])
 		var w := _gltf(p["file"]) if p.has("file") else _proc_prop(p)
 		if w:
 			holder.add_child(w)
@@ -257,6 +281,9 @@ func _render(anims: Array, dirs: Array, still: bool) -> void:
 	for an in anims:
 		var ad: Dictionary = cfg["anims"][an]
 		var clip: String = ad.get("clip", "")
+		if ad.has("retarget"):
+			await _render_retarget(an, ad, dirs, still, out_root)
+			continue
 		if proc != null and clip == "":
 			var nf: int = int(ad.get("frames", 8))
 			var lp: bool = ad.get("loop", false)
@@ -315,6 +342,7 @@ func _render(anims: Array, dirs: Array, still: bool) -> void:
 				else:
 					u = float(i) / float(max(frames - 1, 1))
 				player.seek(t0 + (t1 - t0) * u, true)
+				_lock_props(ad)
 				await RenderingServer.frame_post_draw
 				await RenderingServer.frame_post_draw
 				var img := vp.get_texture().get_image()
@@ -344,3 +372,152 @@ func _probe(clip: String) -> void:
 				var gp: Vector3 = (skel.global_transform * skel.get_bone_global_pose(bi)).origin
 				row += " %.3f %.3f %.3f" % [gp.x, gp.y, gp.z]
 			print("P ", row)
+
+
+
+# ---------------------------------------------------------------- retargeting (meshyrig -> meshyrig)
+## anims[an]["retarget"] = {"file": <clip file>, "clip": <name part>}. Every Meshy auto-rig shares the same 24-bone
+## layout but with different rest poses, so clips are moved through world-space rotation deltas:
+##   W_tgt(bone) = (W_src_pose * W_src_rest^-1) * W_tgt_rest   (then converted back to the target's local space)
+## Hips translation (bob / crouch) is scaled by the hip-height ratio. Root XZ travel is dropped (in-place).
+
+var _rt_cache := {}   # file -> [scene, skel, player]
+
+
+func _rt_source(file: String) -> Array:
+	if _rt_cache.has(file):
+		return _rt_cache[file]
+	var sc := _gltf(file)
+	vp.add_child(sc)
+	sc.visible = false
+	var sk: Skeleton3D = _find(sc, "Skeleton3D")[0]
+	var ap: AnimationPlayer = _find(sc, "AnimationPlayer")[0]
+	_rt_cache[file] = [sc, sk, ap]
+	return _rt_cache[file]
+
+
+func _rt_anim(ap: AnimationPlayer, clip: String) -> String:
+	for nm in ap.get_animation_list():
+		if String(nm).contains(clip):
+			return nm
+	return ""
+
+
+## character-space transform of a skeleton (relative to its scene root, so the render yaw does not leak in)
+func _cs(sk: Skeleton3D, root: Node3D) -> Transform3D:
+	return root.global_transform.affine_inverse() * sk.global_transform
+
+
+func _wrot(sk: Skeleton3D, cs: Transform3D, i: int, rest: bool) -> Quaternion:
+	var g := sk.get_bone_global_rest(i) if rest else sk.get_bone_global_pose(i)
+	return (cs.basis.orthonormalized() * g.basis.orthonormalized()).get_rotation_quaternion()
+
+
+func _apply_retarget(src: Skeleton3D, src_root: Node3D, dst: Skeleton3D) -> void:
+	var cs := _cs(src, src_root)
+	var cd := _cs(dst, model)
+	var n := dst.get_bone_count()
+	var wt := {}
+	var dst_node := cd.basis.orthonormalized().get_rotation_quaternion()
+	for i in n:
+		var si := src.find_bone(dst.get_bone_name(i))
+		var par := dst.get_bone_parent(i)
+		var pw: Quaternion = wt[par] if par >= 0 else dst_node
+		var w: Quaternion
+		if si < 0:
+			w = pw * dst.get_bone_rest(i).basis.get_rotation_quaternion()
+		else:
+			var d := _wrot(src, cs, si, false) * _wrot(src, cs, si, true).inverse()
+			w = d * _wrot(dst, cd, i, true)
+		wt[i] = w
+		dst.set_bone_pose_rotation(i, (pw.inverse() * w).normalized())
+	var hs := src.find_bone("Hips")
+	var hd := dst.find_bone("Hips")
+	if hs >= 0 and hd >= 0:
+		var s_rest := cs * src.get_bone_global_rest(hs).origin
+		var s_pose := cs * src.get_bone_global_pose(hs).origin
+		var d_rest := cd * dst.get_bone_global_rest(hd).origin
+		var ratio := d_rest.y / maxf(s_rest.y, 0.001)
+		var delta := (s_pose - s_rest) * ratio
+		delta.x = 0.0
+		delta.z = 0.0
+		var par := dst.get_bone_parent(hd)
+		var parent_g := cd * (dst.get_bone_global_pose(par) if par >= 0 else Transform3D())
+		dst.set_bone_pose_position(hd, parent_g.affine_inverse() * (d_rest + delta))
+
+
+func _render_retarget(an: String, ad: Dictionary, dirs: Array, still: bool, out_root: String) -> void:
+	var rt: Dictionary = ad["retarget"]
+	var src: Array = _rt_source(rt["file"])
+	var sap: AnimationPlayer = src[2]
+	var full := _rt_anim(sap, rt["clip"])
+	if full == "":
+		push_error("clip not found %s in %s: %s" % [rt["clip"], rt["file"], sap.get_animation_list()])
+		return
+	var a: Animation = sap.get_animation(full)
+	var length := a.length
+	var t0: float = float(ad.get("from", 0.0)) * length
+	var t1: float = float(ad.get("to", 1.0)) * length
+	var frames: int = int(ad.get("frames", 8))
+	var loop: bool = ad.get("loop", false)
+	var times: Array = ad.get("times", [])
+	player.stop()
+	sap.play(full)
+	sap.pause()
+	DirAccess.make_dir_recursive_absolute(out_root + "/" + an)
+	for d in dirs:
+		model.rotation_degrees.y = DIR_YAW[d] + float(cfg.get("yaw_offset", 0.0)) + float(ad.get("yaw", 0.0))
+		for i in frames:
+			var u: float
+			if times.size() == frames:
+				u = float(times[i])
+			elif loop:
+				u = float(i) / float(frames)
+			else:
+				u = float(i) / float(max(frames - 1, 1))
+			sap.seek(t0 + (t1 - t0) * u, true)
+			_apply_retarget(src[1], src[0], skel)
+			_lock_props(ad)
+			await RenderingServer.frame_post_draw
+			await RenderingServer.frame_post_draw
+			vp.get_texture().get_image().save_png("%s/%s/d%d_%02d.png" % [out_root, an, d, i])
+			if still:
+				break
+	print("rendered ", an)
+
+
+## --stride=<clip> [--rfile=<file>]: root travel of a clip (metres, world), hip height and length, for foot-plant fps.
+func _stride(clip: String, rfile: String) -> void:
+	var sk: Skeleton3D = skel
+	var ap: AnimationPlayer = player
+	var full := ""
+	if rfile != "":
+		var src := _rt_source(rfile)
+		sk = src[1]
+		ap = src[2]
+		full = _rt_anim(ap, clip)
+	else:
+		for nm in ap.get_animation_list():
+			if String(nm).contains(clip):
+				full = nm
+				break
+	if full == "":
+		print("STRIDE clip not found ", clip, " ", ap.get_animation_list())
+		return
+	var a: Animation = ap.get_animation(full)
+	var hb := sk.find_bone("Hips")
+	ap.play(full)
+	ap.pause()
+	var n := 60
+	var prev := Vector3.ZERO
+	var rows := []
+	for i in n + 1:
+		ap.seek(a.length * i / n, true)
+		var g := sk.global_transform
+		var hp := g * sk.get_bone_global_pose(hb).origin
+		var lf := g * sk.get_bone_global_pose(sk.find_bone("LeftFoot")).origin
+		var rf := g * sk.get_bone_global_pose(sk.find_bone("RightFoot")).origin
+		rows.append("%.3f hips %.3f %.3f %.3f  LF %.3f %.3f %.3f  RF %.3f %.3f %.3f" % [float(i) / n, hp.x, hp.y, hp.z, lf.x, lf.y, lf.z, rf.x, rf.y, rf.z])
+	print("STRIDE ", full, " len ", a.length)
+	for r in rows:
+		print("S ", r)

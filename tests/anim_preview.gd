@@ -6,7 +6,7 @@ extends Node2D
 
 const HERO_ANIMS := ["idle", "run", "attack1", "attack2", "attack3", "dash", "special", "hurt", "death"]
 const ENEMY_ANIMS := ["idle", "move", "windup", "attack", "hurt", "death", "cast", "charge"]
-const HEIGHTS := {"kaela": 132.0, "liora": 132.0, "shade": 110.0, "spitter": 80.0, "brute": 150.0, "regent": 260.0}
+const HEIGHTS := {"gen_bloom": 270.0, "gen_anvil": 290.0, "gen_seneschal": 280.0, "kaela": 132.0, "liora": 132.0, "shade": 110.0, "spitter": 80.0, "brute": 150.0, "regent": 260.0}
 
 var out := "/tmp"
 var chars: Array = ["kaela", "liora", "shade", "spitter", "brute", "regent"]
@@ -38,12 +38,15 @@ func _ready() -> void:
 
 
 func _anims_for(c: String) -> Array:
-	return HERO_ANIMS if (c == "kaela" or c == "liora") else ENEMY_ANIMS
+	if c == "kaela" or c == "liora":
+		return HERO_ANIMS
+	var keys: Array = AnimSprite._load(c).get("anims", {}).keys()
+	return keys.slice(0, 12) if keys.size() > 0 else ENEMY_ANIMS
 
 
 func _build_grid() -> void:
 	var vs := get_viewport_rect().size
-	var cols := 9
+	var cols := 12
 	var cw := vs.x / cols
 	var rh := vs.y / maxf(chars.size(), 1)
 	for r in chars.size():

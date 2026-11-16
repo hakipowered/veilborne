@@ -29,7 +29,7 @@ def main(char):
     anims = cfg["anims"]
     frames = []   # (anim, dir, idx, img trimmed, ox, oy)
     for an, ad in anims.items():
-        if ad.get("clip", "") == "" and "procedural" not in cfg:
+        if ad.get("clip", "") == "" and "retarget" not in ad and "procedural" not in cfg:
             continue
         for d in range(5):
             fl = sorted(glob.glob(os.path.join(ROOT, "out", char, an, "d%d_*.png" % d)))
@@ -100,7 +100,7 @@ def main(char):
         vram += im.width * im.height * 4
     data = {"id": char, "ref_h": ref_h, "pages": len(imgs), "anims": {}}
     for an, ad in anims.items():
-        if ad.get("clip", "") == "" and "procedural" not in cfg:
+        if ad.get("clip", "") == "" and "retarget" not in ad and "procedural" not in cfg:
             continue
         dirs = []
         for d in range(5):

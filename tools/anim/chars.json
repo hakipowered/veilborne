@@ -60,18 +60,56 @@
     "yaw": 40
    },
    "run": {
-    "clip": "running",
+    "retarget": {
+     "file": "voidcaster/a6.glb",
+     "clip": "Lean_Forward_Sprint"
+    },
     "from": 0,
     "to": 1,
-    "frames": 8,
-    "fps": 13,
+    "frames": 12,
+    "fps": 12.5,
     "loop": true,
     "events": {
      "step": [
       0,
-      4
+      6
      ]
-    }
+    },
+    "prop_lock": [
+     [
+      -115,
+      0,
+      15
+     ],
+     [
+      -115,
+      0,
+      -15
+     ]
+    ]
+   },
+   "run_stop": {
+    "retarget": {
+     "file": "voidcaster/a7.glb",
+     "clip": "Sprint_and_Sudden_Stop"
+    },
+    "from": 0.25,
+    "to": 0.72,
+    "frames": 8,
+    "fps": 18,
+    "loop": false,
+    "prop_lock": [
+     [
+      -115,
+      0,
+      15
+     ],
+     [
+      -115,
+      0,
+      -15
+     ]
+    ]
    },
    "attack1": {
     "yaw": 40,
@@ -240,18 +278,46 @@
     "yaw": 0
    },
    "run": {
-    "clip": "running",
+    "retarget": {
+     "file": "voidcaster/a6.glb",
+     "clip": "Lean_Forward_Sprint"
+    },
     "from": 0,
     "to": 1,
-    "frames": 8,
-    "fps": 13,
+    "frames": 12,
+    "fps": 11.0,
     "loop": true,
     "events": {
      "step": [
       0,
-      4
+      6
      ]
-    }
+    },
+    "prop_lock": [
+     [
+      110,
+      0,
+      10
+     ]
+    ]
+   },
+   "run_stop": {
+    "retarget": {
+     "file": "voidcaster/a7.glb",
+     "clip": "Sprint_and_Sudden_Stop"
+    },
+    "from": 0.25,
+    "to": 0.72,
+    "frames": 8,
+    "fps": 18,
+    "loop": false,
+    "prop_lock": [
+     [
+      110,
+      0,
+      10
+     ]
+    ]
    },
    "attack1": {
     "yaw": 0,
@@ -701,8 +767,1336 @@
     "frames": 12,
     "fps": 12,
     "loop": false
+   },
+   "roar": {
+    "retarget": {
+     "file": "gen_bloom/a5.glb",
+     "clip": "Shouting_Angrily"
+    },
+    "from": 0,
+    "to": 1,
+    "frames": 12,
+    "fps": 10,
+    "loop": false
+   },
+   "slam_w": {
+    "retarget": {
+     "file": "forgegolem/a3.glb",
+     "clip": "Charged_Ground_Slam"
+    },
+    "from": 0.03,
+    "to": 0.42,
+    "frames": 7,
+    "fps": 10,
+    "loop": false
+   },
+   "slam": {
+    "retarget": {
+     "file": "forgegolem/a3.glb",
+     "clip": "Charged_Ground_Slam"
+    },
+    "from": 0.42,
+    "to": 0.92,
+    "frames": 6,
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
    }
   },
   "out_scale": 0.9
+ },
+ "sporeling": {
+  "model": "sporeling/model.glb",
+  "clip_files": [
+   "sporeling/model.glb",
+   "sporeling/a1.glb",
+   "sporeling/a2.glb",
+   "sporeling/a3.glb",
+   "sporeling/a4.glb",
+   "sporeling/walk.glb",
+   "sporeling/run.glb"
+  ],
+  "up_axis": 1,
+  "cell": 288,
+  "ss": 2,
+  "cam_size": 2.5,
+  "center_y": 0.68,
+  "elev": 40,
+  "height_m": 1.3,
+  "anims": {
+   "idle": {
+    "clip": "Idle",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "walking",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 9,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "hurt": {
+    "clip": "Hit_Reaction",
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "clip": "Dead",
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   },
+   "throw_w": {
+    "clip": "Crouch_Pull_and_Throw",
+    "from": 0.0,
+    "to": 0.5,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "throw": {
+    "clip": "Crouch_Pull_and_Throw",
+    "from": 0.5,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "puff_w": {
+    "clip": "mage_soell_cast",
+    "from": 0.0,
+    "to": 0.42,
+    "frames": 5,
+    "fps": 10,
+    "loop": false
+   },
+   "puff": {
+    "clip": "mage_soell_cast",
+    "from": 0.42,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   }
+  },
+  "out_scale": 0.7
+ },
+ "thornknight": {
+  "model": "thornknight/model.glb",
+  "clip_files": [
+   "thornknight/model.glb",
+   "thornknight/a2.glb",
+   "thornknight/a3.glb",
+   "thornknight/a4.glb",
+   "thornknight/walk.glb"
+  ],
+  "up_axis": 1,
+  "cell": 384,
+  "ss": 2,
+  "cam_size": 3.7,
+  "center_y": 1.12,
+  "elev": 40,
+  "height_m": 2.2,
+  "anims": {
+   "idle": {
+    "clip": "Axe_Stance",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "walking_man",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "guard": {
+    "clip": "Axe_Stance",
+    "from": 0,
+    "to": 0.3,
+    "frames": 3,
+    "fps": 6,
+    "loop": false
+   },
+   "bash_w": {
+    "clip": "Shield_Push_Left",
+    "from": 0.0,
+    "to": 0.42,
+    "frames": 5,
+    "fps": 10,
+    "loop": false
+   },
+   "bash": {
+    "clip": "Shield_Push_Left",
+    "from": 0.42,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "slash_w": {
+    "clip": "Right_Hand_Sword_Slash",
+    "from": 0.0,
+    "to": 0.38,
+    "frames": 5,
+    "fps": 10,
+    "loop": false
+   },
+   "slash": {
+    "clip": "Right_Hand_Sword_Slash",
+    "from": 0.38,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "chop_w": {
+    "clip": "Charged_Axe_Chop",
+    "from": 0.0,
+    "to": 0.55,
+    "frames": 7,
+    "fps": 9,
+    "loop": false
+   },
+   "chop": {
+    "clip": "Charged_Axe_Chop",
+    "from": 0.55,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.75
+ },
+ "forgegolem": {
+  "model": "forgegolem/model.glb",
+  "clip_files": [
+   "forgegolem/model.glb",
+   "forgegolem/a1.glb",
+   "forgegolem/a2.glb",
+   "forgegolem/a3.glb",
+   "forgegolem/walk.glb"
+  ],
+  "up_axis": 1,
+  "cell": 384,
+  "ss": 2,
+  "cam_size": 3.7,
+  "center_y": 1.12,
+  "elev": 40,
+  "height_m": 2.2,
+  "anims": {
+   "idle": {
+    "clip": "Idle",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "walking_man",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "roar": {
+    "clip": "Chest_Pound",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 10,
+    "loop": false
+   },
+   "charge_w": {
+    "clip": "Head_Down_Charge",
+    "from": 0.0,
+    "to": 0.2,
+    "frames": 4,
+    "fps": 8,
+    "loop": false
+   },
+   "charge": {
+    "clip": "Head_Down_Charge",
+    "from": 0.2,
+    "to": 1.0,
+    "frames": 8,
+    "fps": 14,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "slam_w": {
+    "clip": "Charged_Ground_Slam",
+    "from": 0.03,
+    "to": 0.42,
+    "frames": 7,
+    "fps": 10,
+    "loop": false
+   },
+   "slam": {
+    "clip": "Charged_Ground_Slam",
+    "from": 0.42,
+    "to": 0.92,
+    "frames": 6,
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.72
+ },
+ "cinderimp": {
+  "model": "cinderimp/model.glb",
+  "clip_files": [
+   "cinderimp/model.glb",
+   "cinderimp/a1.glb",
+   "cinderimp/a2.glb",
+   "cinderimp/a4.glb",
+   "cinderimp/run.glb"
+  ],
+  "up_axis": 1,
+  "cell": 288,
+  "ss": 2,
+  "cam_size": 2.5,
+  "center_y": 0.68,
+  "elev": 40,
+  "height_m": 1.3,
+  "anims": {
+   "idle": {
+    "clip": "Combat_Stance",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "running",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 12,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "hop": {
+    "clip": "Roll_Dodge",
+    "from": 0.05,
+    "to": 0.8,
+    "frames": 7,
+    "fps": 14,
+    "loop": false
+   },
+   "cast_w": {
+    "clip": "mage_soell_cast",
+    "from": 0.0,
+    "to": 0.42,
+    "frames": 5,
+    "fps": 10,
+    "loop": false
+   },
+   "cast": {
+    "clip": "mage_soell_cast",
+    "from": 0.42,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "volley_w": {
+    "clip": "mage_soell_cast_3",
+    "from": 0.0,
+    "to": 0.48,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "volley": {
+    "clip": "mage_soell_cast_3",
+    "from": 0.48,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.7
+ },
+ "hollowpike": {
+  "model": "hollowpike/model.glb",
+  "clip_files": [
+   "hollowpike/model.glb",
+   "hollowpike/a1.glb",
+   "hollowpike/a2.glb",
+   "hollowpike/a3.glb",
+   "hollowpike/walk.glb"
+  ],
+  "up_axis": 1,
+  "cell": 352,
+  "ss": 2,
+  "cam_size": 3.1,
+  "center_y": 0.92,
+  "elev": 40,
+  "height_m": 1.8,
+  "anims": {
+   "idle": {
+    "clip": "Combat_Stance",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "Spear_Walk",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 9,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "sweep_w": {
+    "clip": "Reaping_Swing",
+    "from": 0.0,
+    "to": 0.48,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "sweep": {
+    "clip": "Reaping_Swing",
+    "from": 0.48,
+    "to": 1.0,
+    "frames": 7,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "thrust_w": {
+    "clip": "Thrust_Slash",
+    "from": 0.0,
+    "to": 0.38,
+    "frames": 5,
+    "fps": 10,
+    "loop": false
+   },
+   "thrust": {
+    "clip": "Thrust_Slash",
+    "from": 0.38,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.72
+ },
+ "voidcaster": {
+  "model": "voidcaster/model.glb",
+  "clip_files": [
+   "voidcaster/model.glb"
+  ],
+  "up_axis": 1,
+  "cell": 352,
+  "ss": 2,
+  "cam_size": 3.1,
+  "center_y": 0.92,
+  "elev": 40,
+  "height_m": 1.8,
+  "anims": {
+   "idle": {
+    "clip": "Idle",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "retarget": {
+     "file": "forgegolem/walk.glb",
+     "clip": "walking_man"
+    },
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "cast_w": {
+    "retarget": {
+     "file": "gen_bloom/a4.glb",
+     "clip": "Charged_Spell_Cast"
+    },
+    "from": 0.0,
+    "to": 0.2,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "cast": {
+    "retarget": {
+     "file": "gen_bloom/a4.glb",
+     "clip": "Charged_Spell_Cast"
+    },
+    "from": 0.2,
+    "to": 0.5,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "bolt_w": {
+    "retarget": {
+     "file": "cinderimp/a1.glb",
+     "clip": "mage_soell_cast"
+    },
+    "from": 0.0,
+    "to": 0.42,
+    "frames": 5,
+    "fps": 10,
+    "loop": false
+   },
+   "bolt": {
+    "retarget": {
+     "file": "cinderimp/a1.glb",
+     "clip": "mage_soell_cast"
+    },
+    "from": 0.42,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.72
+ },
+ "hollowchampion": {
+  "model": "hollowchampion/model.glb",
+  "clip_files": [
+   "hollowchampion/model.glb",
+   "hollowchampion/a1.glb",
+   "hollowchampion/a2.glb",
+   "hollowchampion/a3.glb",
+   "hollowchampion/a4.glb",
+   "hollowchampion/walk.glb"
+  ],
+  "up_axis": 1,
+  "cell": 384,
+  "ss": 2,
+  "cam_size": 3.7,
+  "center_y": 1.12,
+  "elev": 40,
+  "height_m": 2.2,
+  "anims": {
+   "idle": {
+    "clip": "Combat_Stance",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "walking_man",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 9,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "dash": {
+    "retarget": {
+     "file": "gen_seneschal/a9.glb",
+     "clip": "run_fast"
+    },
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 16,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "upslash_w": {
+    "clip": "Charged_Upward_Slash",
+    "from": 0.0,
+    "to": 0.52,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "upslash": {
+    "clip": "Charged_Upward_Slash",
+    "from": 0.52,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "slash_w": {
+    "clip": "Charged_Slash",
+    "from": 0.0,
+    "to": 0.52,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "slash": {
+    "clip": "Charged_Slash",
+    "from": 0.52,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "judgment_w": {
+    "clip": "Sword_Judgment",
+    "from": 0.0,
+    "to": 0.55,
+    "frames": 7,
+    "fps": 10,
+    "loop": false
+   },
+   "judgment": {
+    "clip": "Sword_Judgment",
+    "from": 0.55,
+    "to": 1.0,
+    "frames": 7,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "combo_w": {
+    "clip": "Weapon_Combo_2",
+    "from": 0.0,
+    "to": 0.15,
+    "frames": 3,
+    "fps": 10,
+    "loop": false
+   },
+   "combo": {
+    "clip": "Weapon_Combo_2",
+    "from": 0.15,
+    "to": 1.0,
+    "frames": 12,
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.75
+ },
+ "gen_bloom": {
+  "model": "gen_bloom/model.glb",
+  "clip_files": [
+   "gen_bloom/model.glb",
+   "gen_bloom/a1.glb",
+   "gen_bloom/a2.glb",
+   "gen_bloom/a3.glb",
+   "gen_bloom/a4.glb",
+   "gen_bloom/a5.glb",
+   "gen_bloom/walk.glb"
+  ],
+  "up_axis": 1,
+  "cell": 448,
+  "ss": 2,
+  "cam_size": 4.1,
+  "center_y": 1.2,
+  "elev": 40,
+  "height_m": 2.4,
+  "anims": {
+   "idle": {
+    "clip": "Combat_Stance",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "walking_man",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "roar": {
+    "clip": "Shouting_Angrily",
+    "from": 0,
+    "to": 1,
+    "frames": 12,
+    "fps": 10,
+    "loop": false
+   },
+   "leap_w": {
+    "clip": "Basic_Jump",
+    "from": 0.0,
+    "to": 0.3,
+    "frames": 4,
+    "fps": 10,
+    "loop": false
+   },
+   "leap": {
+    "clip": "Basic_Jump",
+    "from": 0.3,
+    "to": 1.0,
+    "frames": 8,
+    "fps": 12,
+    "loop": false
+   },
+   "reap_w": {
+    "clip": "Reaping_Swing",
+    "from": 0.0,
+    "to": 0.48,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "reap": {
+    "clip": "Reaping_Swing",
+    "from": 0.48,
+    "to": 1.0,
+    "frames": 7,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "combo_w": {
+    "clip": "Triple_Combo_Attack",
+    "from": 0.0,
+    "to": 0.18,
+    "frames": 4,
+    "fps": 10,
+    "loop": false
+   },
+   "combo": {
+    "clip": "Triple_Combo_Attack",
+    "from": 0.18,
+    "to": 1.0,
+    "frames": 12,
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "cast_w": {
+    "clip": "Charged_Spell_Cast",
+    "from": 0.0,
+    "to": 0.2,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "cast": {
+    "clip": "Charged_Spell_Cast",
+    "from": 0.2,
+    "to": 0.5,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.85
+ },
+ "gen_anvil": {
+  "model": "gen_anvil/model.glb",
+  "clip_files": [
+   "gen_anvil/model.glb",
+   "gen_anvil/a1.glb",
+   "gen_anvil/a2.glb",
+   "gen_anvil/a3.glb",
+   "gen_anvil/a5.glb",
+   "gen_anvil/a6.glb",
+   "gen_anvil/walk.glb"
+  ],
+  "up_axis": 1,
+  "cell": 448,
+  "ss": 2,
+  "cam_size": 4.1,
+  "center_y": 1.2,
+  "elev": 40,
+  "height_m": 2.4,
+  "anims": {
+   "idle": {
+    "clip": "Axe_Stance",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "walking_man",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "roar": {
+    "clip": "Chest_Pound",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 10,
+    "loop": false
+   },
+   "charge_w": {
+    "retarget": {
+     "file": "forgegolem/a2.glb",
+     "clip": "Head_Down_Charge"
+    },
+    "from": 0.0,
+    "to": 0.2,
+    "frames": 4,
+    "fps": 8,
+    "loop": false
+   },
+   "charge": {
+    "retarget": {
+     "file": "forgegolem/a2.glb",
+     "clip": "Head_Down_Charge"
+    },
+    "from": 0.2,
+    "to": 1.0,
+    "frames": 8,
+    "fps": 14,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "spin_w": {
+    "clip": "Axe_Spin_Attack",
+    "from": 0.0,
+    "to": 0.22,
+    "frames": 4,
+    "fps": 10,
+    "loop": false
+   },
+   "spin": {
+    "clip": "Axe_Spin_Attack",
+    "from": 0.22,
+    "to": 0.95,
+    "frames": 9,
+    "fps": 16,
+    "loop": true
+   },
+   "swing_w": {
+    "clip": "Heavy_Hammer_Swing",
+    "from": 0.0,
+    "to": 0.5,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "swing": {
+    "clip": "Heavy_Hammer_Swing",
+    "from": 0.5,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "slam_w": {
+    "clip": "Charged_Ground_Slam",
+    "from": 0.03,
+    "to": 0.42,
+    "frames": 7,
+    "fps": 10,
+    "loop": false
+   },
+   "slam": {
+    "clip": "Charged_Ground_Slam",
+    "from": 0.42,
+    "to": 0.92,
+    "frames": 6,
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "stomp_w": {
+    "clip": "Angry_Ground_Stomp",
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 5,
+    "fps": 10,
+    "loop": false
+   },
+   "stomp": {
+    "clip": "Angry_Ground_Stomp",
+    "from": 0.45,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.85
+ },
+ "gen_seneschal": {
+  "model": "gen_seneschal/model.glb",
+  "clip_files": [
+   "gen_seneschal/model.glb",
+   "gen_seneschal/a1.glb",
+   "gen_seneschal/a2.glb",
+   "gen_seneschal/a4.glb",
+   "gen_seneschal/a9.glb",
+   "gen_seneschal/walk.glb"
+  ],
+  "up_axis": 1,
+  "cell": 448,
+  "ss": 2,
+  "cam_size": 4.1,
+  "center_y": 1.2,
+  "elev": 40,
+  "height_m": 2.4,
+  "anims": {
+   "idle": {
+    "clip": "Combat_Stance",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "walking_man",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "dash": {
+    "clip": "run_fast",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 16,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "roar": {
+    "retarget": {
+     "file": "gen_bloom/a5.glb",
+     "clip": "Shouting_Angrily"
+    },
+    "from": 0,
+    "to": 1,
+    "frames": 12,
+    "fps": 10,
+    "loop": false
+   },
+   "judgment_w": {
+    "clip": "Sword_Judgment",
+    "from": 0.0,
+    "to": 0.55,
+    "frames": 7,
+    "fps": 10,
+    "loop": false
+   },
+   "judgment": {
+    "clip": "Sword_Judgment",
+    "from": 0.55,
+    "to": 1.0,
+    "frames": 7,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "combo_w": {
+    "clip": "Triple_Combo_Attack",
+    "from": 0.0,
+    "to": 0.18,
+    "frames": 4,
+    "fps": 10,
+    "loop": false
+   },
+   "combo": {
+    "clip": "Triple_Combo_Attack",
+    "from": 0.18,
+    "to": 1.0,
+    "frames": 12,
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "cast_w": {
+    "clip": "Charged_Spell_Cast",
+    "from": 0.0,
+    "to": 0.2,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "cast": {
+    "clip": "Charged_Spell_Cast",
+    "from": 0.2,
+    "to": 0.5,
+    "frames": 6,
+    "fps": 14,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.85
  }
 }
