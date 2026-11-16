@@ -10,7 +10,8 @@ extends Node2D
 ##   +20 foreground silhouettes / debris    CanvasLayer 2: vignette (below HUD layer 10)
 
 const ENV := "res://art/env/"
-const MAX_LIGHTS := 12
+const MAX_LIGHTS := 16
+const SHADER_LIGHTS := 6
 
 const THEMES := {
 	"oriel": {
@@ -144,9 +145,13 @@ var _gate_motes: CPUParticles2D
 var _vignette: CanvasLayer
 var _lights_a := PackedVector4Array()
 var _lights_b := PackedVector4Array()
+var _sa := PackedVector4Array([Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO])
+var _sb := PackedVector4Array([Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO])
 var _door_light := -1
 var _sigil_light := -1
 var _flash := 0.0
+var _low := false
+var _max_shader_lights := SHADER_LIGHTS
 var _flash_timer := 3.0
 
 func _init() -> void:
@@ -192,6 +197,8 @@ func build(p_floor_key: String, p_room_index: int, seed_value: int) -> void:
 	_build_vignette()
 	_compute_spawns()
 	_push_lights()
+	if _low:
+		_apply_low()
 	if is_instance_valid(_ysort_parent):
 		add_ysorted_props_to(_ysort_parent)
 
@@ -272,6 +279,25 @@ func resolve(pos: Vector2, radius: float) -> Vector2:
 ## World rect the camera may show without leaving painted space (optional camera limits).
 func get_camera_limits() -> Rect2:
 	return Rect2(-vhalf.x - 700.0, -vhalf.y - wall_h, (vhalf.x + 700.0) * 2.0, vhalf.y * 2.0 + wall_h + 500.0)
+
+## Optional low-end mode: plain backdrop (no mist shader), 3 shader lights, fewer particles, no vignette.
+## Call after build(); persists for later builds.
+func set_low_quality(on: bool) -> void:
+	if on == _low:
+		return
+	_low = on
+	_apply_low()
+
+func _apply_low() -> void:
+	var on := _low
+	if _backdrop == null:
+		return
+	_backdrop.material = null if on else _void_mat
+	if _vignette:
+		_vignette.visible = not on
+	for n in find_children("*", "CPUParticles2D", true, false):
+		n.amount = maxi(2, n.amount / 2) if on else n.amount
+	_max_shader_lights = 3 if on else SHADER_LIGHTS
 
 func get_room_title() -> String:
 	return theme.get("name", "")
@@ -374,19 +400,34 @@ func _add_light(pos: Vector2, color: Color, radius: float, intensity: float, fli
 	_lights_b.append(Vector4(color.r, color.g, color.b, flicker))
 	return _lights_a.size() - 1
 
+## Culls lights to the camera view, applies flicker on the CPU and uploads at most SHADER_LIGHTS.
 func _push_lights() -> void:
-	var a := _lights_a.duplicate()
-	var b := _lights_b.duplicate()
-	while a.size() < MAX_LIGHTS:
-		a.append(Vector4.ZERO)
-		b.append(Vector4.ZERO)
-	var mats: Array = _wall_mats.duplicate()
-	mats.append(_floor_mat)
-	for m in mats:
-		if m:
-			m.set_shader_parameter("light_count", _lights_a.size())
-			m.set_shader_parameter("light_a", a)
-			m.set_shader_parameter("light_b", b)
+	var t := Time.get_ticks_msec() * 0.001
+	var cam := get_viewport().get_camera_2d() if is_inside_tree() else null
+	var c := cam.get_screen_center_position() if cam else Vector2.ZERO
+	var ext := get_viewport_rect().size * 0.5 / (cam.zoom if cam else Vector2.ONE) if is_inside_tree() else Vector2(2000, 1000)
+	var n := 0
+	for i in range(_lights_a.size()):
+		var la := _lights_a[i]
+		if la.w <= 0.001:
+			continue
+		if absf(la.x - c.x) > ext.x + la.z or absf(la.y - c.y) > ext.y + la.z * 0.6:
+			continue
+		var lb := _lights_b[i]
+		var fl := 1.0 - lb.w * (0.5 + 0.5 * sin(t * (6.3 + i * 1.7) + i * 2.1)) * (0.6 + 0.4 * sin(t * 13.1 + i))
+		_sa[n] = Vector4(la.x, la.y, la.z, la.w * fl)
+		_sb[n] = lb
+		n += 1
+		if n >= _max_shader_lights:
+			break
+	for m in _wall_mats:
+		m.set_shader_parameter("light_count", n)
+		m.set_shader_parameter("light_a", _sa)
+		m.set_shader_parameter("light_b", _sb)
+	if _floor_mat:
+		_floor_mat.set_shader_parameter("light_count", n)
+		_floor_mat.set_shader_parameter("light_a", _sa)
+		_floor_mat.set_shader_parameter("light_b", _sb)
 
 func _apply_dynamic() -> void:
 	if _floor_mat:
@@ -966,6 +1007,7 @@ func _compute_spawns() -> void:
 
 func _process(delta: float) -> void:
 	var t := Time.get_ticks_msec() * 0.001
+	_push_lights()
 	var cam := get_viewport().get_camera_2d()
 	var cpos := Vector2.ZERO
 	if cam:

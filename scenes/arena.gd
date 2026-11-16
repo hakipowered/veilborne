@@ -6,15 +6,10 @@ signal run_finished(victory: bool)
 const INTERP_DELAY_MS := 100
 const HeroScript := preload("res://entities/hero.gd")
 const HudScript := preload("res://ui/hud.gd")
-const FLOOR_SCALE := 1.6
 const MAX_PARTICLES := 260
 const MAX_TEXTS := 40
 const MAX_PROJECTILES := 120
 
-const FLOORS := {
-	"catacomb": {"tex": "res://art/floor_catacomb.jpg", "center": Vector2(690, 388), "half": Vector2(470, 245)},
-	"throne": {"tex": "res://art/floor_throne.jpg", "center": Vector2(690, 388), "half": Vector2(560, 280)},
-}
 const ROOMS := [
 	{"floor": "catacomb", "name": "Gilded Catacombs I", "waves": [["shade", "shade", "shade"], ["shade", "spitter", "shade", "spitter"]]},
 	{"floor": "catacomb", "name": "Gilded Catacombs II", "waves": [["spitter", "spitter", "shade", "shade"], ["brute", "shade", "shade"]]},
@@ -25,7 +20,7 @@ const ROOMS := [
 const KINDS := ["shade", "spitter", "brute", "regent"]
 
 var EnemyScript: GDScript
-var floor_sprite: Sprite2D
+var env: Node2D
 var entities: Node2D
 var overlay: Node2D
 var camera: Camera2D
@@ -57,10 +52,8 @@ var arcs: Array = [] ## lightning [a, b, life]
 func _ready() -> void:
 	EnemyScript = load("res://entities/enemy.gd")
 	Net.arena = self
-	floor_sprite = Sprite2D.new()
-	floor_sprite.centered = false
-	floor_sprite.z_index = -10
-	add_child(floor_sprite)
+	env = preload("res://scenes/environment.gd").new()
+	add_child(env)
 	entities = Node2D.new()
 	entities.y_sort_enabled = true
 	add_child(entities)
@@ -176,13 +169,7 @@ func nearest_hero(pos: Vector2) -> Node:
 	return best
 
 func resolve_collision(pos: Vector2, radius: float) -> Vector2:
-	# Keep inside the diamond-shaped chamber: |x|/W + |y|/H <= 1.
-	var w := room_half.x - radius
-	var hh := room_half.y - radius * 0.5
-	var k := absf(pos.x) / w + absf(pos.y) / hh
-	if k > 1.0:
-		pos /= k
-	return pos
+	return env.resolve(pos, radius)
 
 # ---------------------------------------------------------------- rooms
 
@@ -190,11 +177,9 @@ func _load_room(idx: int) -> void:
 	room_index = idx
 	Game.run_room = idx
 	var room: Dictionary = ROOMS[idx]
-	var fl: Dictionary = FLOORS[room["floor"]]
-	floor_sprite.texture = load(fl["tex"])
-	floor_sprite.scale = Vector2.ONE * FLOOR_SCALE
-	floor_sprite.position = -fl["center"] * FLOOR_SCALE
-	room_half = fl["half"] * FLOOR_SCALE
+	env.build(room["floor"], idx, Game.run_seed + idx)
+	env.add_ysorted_props_to(entities)
+	room_half = env.get_bounds_half()
 	for e in enemy_nodes.values():
 		if is_instance_valid(e):
 			e.queue_free()
@@ -208,12 +193,13 @@ func _load_room(idx: int) -> void:
 	boss_pending = room.get("boss", false)
 	var i := 0
 	var n := hero_nodes.size()
+	var start: Vector2 = env.get_player_start()
 	for h in heroes():
-		h.position = Vector2(-120 + 240.0 * i / max(1, n - 1), room_half.y * 0.55) if n > 1 else Vector2(0, room_half.y * 0.55)
+		h.position = start + (Vector2(-120 + 240.0 * i / max(1, n - 1), 0) if n > 1 else Vector2.ZERO)
 		h.vel = Vector2.ZERO
 		h._buffer.clear()
 		i += 1
-	camera.position = Vector2(0, room_half.y * 0.4)
+	camera.position = start
 	camera.reset_smoothing()
 	hud.set_room_name("%s  ·  %d/%d" % [room["name"], idx + 1, ROOMS.size()])
 	_music("boss" if room.get("boss", false) else "catacombs")
@@ -257,8 +243,14 @@ func _update_waves(delta: float) -> void:
 	var waves: Array = room["waves"]
 	if wave_index < waves.size():
 		for kind in waves[wave_index]:
-			var ang := _rng.randf() * TAU
-			var pos := Vector2(cos(ang) * room_half.x * 0.55, sin(ang) * room_half.y * 0.45)
+			var sp: Array = env.get_spawn_points()
+			var pos := Vector2.ZERO
+			if sp.size() > 0:
+				pos = sp[_rng.randi() % sp.size()] + Vector2(_rng.randf_range(-60, 60), _rng.randf_range(-30, 30))
+			else:
+				var ang := _rng.randf() * TAU
+				pos = Vector2(cos(ang) * room_half.x * 0.55, sin(ang) * room_half.y * 0.45)
+			pos = resolve_collision(pos, 30.0)
 			spawn_enemy(kind, pos)
 		wave_index += 1
 		wave_delay = 0.9
@@ -534,7 +526,7 @@ func _on_kill(eid: int, killer: String, pos: Vector2, kind: String) -> void:
 		float_text(h.position + Vector2(0, -120), "+%d" % int(h.stats["lifesteal"]), Color(0.4, 1, 0.6))
 	var e = enemy_nodes.get(eid)
 	if is_instance_valid(e):
-		e.queue_free()
+		e.die_visual()
 	enemy_nodes.erase(eid)
 	if kind == "regent" and is_authority():
 		for other in enemies():
@@ -561,6 +553,7 @@ func _on_room_clear() -> void:
 func _offer_next(queue: Array) -> void:
 	if queue.is_empty():
 		door_open = true
+		env.set_door_open(true)
 		sfx("door_open")
 		hud.float_banner("The way forward opens", Color(0.6, 0.9, 1.0))
 		return
@@ -702,7 +695,7 @@ func _update_door() -> void:
 			return
 
 func _door_pos() -> Vector2:
-	return Vector2(0, -room_half.y + 70.0)
+	return env.get_door_pos()
 
 func _update_camera(delta: float) -> void:
 	var sum := Vector2.ZERO
@@ -779,16 +772,6 @@ func _draw() -> void:
 		draw_circle(Vector2.ZERO, s["r"] * k, Color(c, 0.3))
 		draw_arc(Vector2.ZERO, s["r"], 0, TAU, 48, Color(c, 0.9), 4.0)
 	draw_set_transform(Vector2.ZERO)
-	if door_open:
-		var d := _door_pos()
-		var t := Time.get_ticks_msec() / 1000.0
-		draw_set_transform(d, 0.0, Vector2(1, 0.5))
-		for r in range(4):
-			var rr := 40.0 + r * 12.0 + sin(t * 3.0 + r) * 4.0
-			draw_arc(Vector2.ZERO, rr, 0, TAU, 40, Color(0.6, 0.9, 1.0, 0.8 - r * 0.18), 4.0)
-		draw_circle(Vector2.ZERO, 36, Color(0.5, 0.85, 1.0, 0.35))
-		draw_set_transform(Vector2.ZERO)
-		draw_line(d, d + Vector2(0, -140), Color(0.6, 0.9, 1.0, 0.25), 60.0)
 
 ## Air layer: projectiles, sparks, lightning, numbers (over characters).
 func _draw_overlay() -> void:

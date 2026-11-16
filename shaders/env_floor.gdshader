@@ -24,9 +24,10 @@ uniform float sigil_base = 0.35;  // idle glow strength
 uniform float sigil_lit = 0.0;    // 0..1 room cleared
 uniform float sigil_wave = 1.0;   // 0..1 expanding clear-wave progress (1 = done)
 
+// Lights are culled to the view and flickered on the CPU (environment.gd); at most 6 reach the shader.
 uniform int light_count = 0;
-uniform vec4 light_a[12];  // x, y, radius, intensity
-uniform vec4 light_b[12];  // r, g, b, flicker amount
+uniform vec4 light_a[6];  // x, y, radius, intensity (flicker already applied)
+uniform vec4 light_b[6];  // r, g, b, unused
 
 uniform vec4 fog_color : source_color = vec4(0.45, 0.6, 0.55, 1.0);
 uniform float fog_amount = 0.22;
@@ -77,9 +78,8 @@ void fragment() {
 
 	// large-scale variation
 	vec4 n1 = texture(noise_tex, w / 1100.0);
-	vec4 n2 = texture(noise_tex, w / 420.0 + 0.37);
 	col *= tint.rgb * (0.86 + 0.28 * n1.r);
-	col = mix(col, grime.rgb, smoothstep(0.55, 0.85, n1.g * 0.7 + n2.b * 0.5) * grime.a * 0.55);
+	col = mix(col, grime.rgb, smoothstep(0.5, 0.8, n1.g * 0.6 + n1.a * 0.5) * grime.a * 0.55);
 
 	// occlusion toward the room rim; stronger under the back walls
 	float k = abs(w.x) / half_size.x + abs(w.y) / half_size.y;
@@ -100,16 +100,13 @@ void fragment() {
 
 	// lighting
 	vec3 light = vec3(ambient);
-	for (int i = 0; i < 12; i++) {
+	for (int i = 0; i < 6; i++) {
 		if (i >= light_count) break;
 		vec4 a = light_a[i];
-		vec4 b = light_b[i];
-		vec2 d = w - a.xy;
+		vec2 d = (w - a.xy) / a.z;
 		d.y *= 1.75;
-		float att = clamp(1.0 - length(d) / a.z, 0.0, 1.0);
-		att *= att;
-		float fl = 1.0 - b.a * (0.5 + 0.5 * sin(TIME * (6.3 + float(i) * 1.7) + float(i) * 2.1)) * (0.6 + 0.4 * sin(TIME * 13.1 + float(i)));
-		light += b.rgb * att * a.w * fl;
+		float att = max(1.0 - dot(d, d), 0.0);
+		light += light_b[i].rgb * (att * att * a.w);
 	}
 	col *= light;
 	col *= 1.0 - occ - back;
@@ -129,9 +126,8 @@ void fragment() {
 	col += em;
 
 	// ground fog
-	float fog = texture(noise_tex, w / 760.0 + TIME * vec2(0.012, 0.005)).b;
-	fog *= texture(noise_tex, w / 330.0 - TIME * vec2(0.008, -0.011)).a * 1.6;
-	fog = smoothstep(0.25, 0.95, fog) * fog_amount * (0.6 + 0.6 * smoothstep(0.5, 1.0, k));
+	float fog = texture(noise_tex, w / 640.0 + TIME * vec2(0.014, 0.006)).b;
+	fog = smoothstep(0.45, 0.9, fog) * fog_amount * (0.6 + 0.6 * smoothstep(0.5, 1.0, k));
 	col = mix(col, fog_color.rgb, fog);
 
 	COLOR = vec4(col, 1.0);

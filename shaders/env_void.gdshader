@@ -1,6 +1,6 @@
 shader_type canvas_item;
-// Abyss backdrop (opaque, far parallax): drifting mist banks, slow breathing light, optional stars,
-// lightning flashes (driven by `flash`) and water caustics (`caustics`).
+// Abyss backdrop (opaque, far parallax). Kept to two texture fetches: it covers the whole screen.
+// Drifting mist, optional twinkling stars, lightning `flash` and water `caustics`.
 
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform vec4 mist_color : source_color = vec4(0.25, 0.45, 0.42, 1.0);
@@ -16,25 +16,12 @@ uniform vec4 caustic_color : source_color = vec4(0.3, 0.8, 0.8, 1.0);
 void fragment() {
 	vec2 uv = UV;
 	vec3 c = texture(TEXTURE, uv).rgb * grade.rgb * darken;
-	float m1 = texture(noise_tex, uv * vec2(1.2, 0.8) + TIME * vec2(0.010, 0.002)).r;
-	float m2 = texture(noise_tex, uv * vec2(2.3, 1.4) - TIME * vec2(0.006, -0.004)).g;
-	float m = smoothstep(0.35, 0.9, m1 * 0.65 + m2 * 0.55);
+	vec4 n = texture(noise_tex, uv * vec2(1.6, 1.0) + TIME * vec2(0.010, 0.003));
+	float m = smoothstep(0.4, 0.85, n.r);
 	c = mix(c, mist_color.rgb, m * mist);
-	c *= 0.9 + 0.1 * sin(TIME * 0.5);
-	if (stars > 0.0) {
-		float s = texture(noise_tex, uv * 31.0).a * texture(noise_tex, uv * 17.0 + 0.3).r;
-		float tw = 0.5 + 0.5 * sin(TIME * 2.0 + s * 60.0);
-		c += vec3(0.9, 0.85, 1.0) * smoothstep(0.62, 0.72, s) * tw * stars;
-	}
-	if (caustics > 0.0) {
-		float a = texture(noise_tex, uv * 3.0 + TIME * vec2(0.03, 0.01)).b;
-		float b = texture(noise_tex, uv * 3.7 - TIME * vec2(0.02, 0.025)).b;
-		float ca = 1.0 - abs(a - b) * 9.0;
-		c += caustic_color.rgb * clamp(ca, 0.0, 1.0) * caustics * smoothstep(0.2, 1.0, uv.y);
-	}
-	c += flash_color.rgb * flash * (0.4 + 0.6 * m1);
-	// edge vignette of the backdrop itself
-	vec2 d = uv - 0.5;
-	c *= 1.0 - dot(d, d) * 1.2;
+	c += vec3(0.9, 0.85, 1.0) * smoothstep(0.80, 0.86, n.a) * (0.5 + 0.5 * sin(TIME * 2.0 + n.g * 30.0)) * stars;
+	float ca = 1.0 - abs(n.b - n.g) * 7.0;
+	c += caustic_color.rgb * clamp(ca, 0.0, 1.0) * caustics * uv.y;
+	c += flash_color.rgb * flash * (0.4 + 0.6 * n.r);
 	COLOR = vec4(c, 1.0);
 }

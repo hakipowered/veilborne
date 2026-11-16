@@ -364,27 +364,21 @@ func _interpolate() -> void:
 
 # ---------------------------------------------------------------- drawing
 
-const SPRITE_HEIGHT := 132.0
-static var _flash_shader: Shader
-var sprite: Sprite2D
+const SPRITE_HEIGHT := 160.0
+const ONE_SHOTS := ["attack1", "attack2", "attack3", "special", "hurt"]
+var body: AnimSprite
 var fx: Node2D
-var _mat: ShaderMaterial
+var _last_state := ""
+var _last_state_t := 0.0
+var _last_combo := -1
 
 func _ensure_sprite() -> void:
-	if sprite:
+	if body:
 		return
-	if _flash_shader == null:
-		_flash_shader = Shader.new()
-		_flash_shader.code = "shader_type canvas_item;\nuniform float flash = 0.0;\nuniform vec4 tint : source_color = vec4(1.0);\nvoid fragment(){ vec4 c = texture(TEXTURE, UV); c.rgb = mix(c.rgb * tint.rgb, vec3(1.0), flash); COLOR = c; }"
-	sprite = Sprite2D.new()
-	sprite.texture = load("res://art/%s.png" % hero_id)
-	var h := float(sprite.texture.get_height())
-	sprite.scale = Vector2.ONE * (SPRITE_HEIGHT / h)
-	sprite.offset = Vector2(0, -h / 2.0)
-	_mat = ShaderMaterial.new()
-	_mat.shader = _flash_shader
-	sprite.material = _mat
-	add_child(sprite)
+	body = AnimSprite.new()
+	add_child(body)
+	body.setup(hero_id, SPRITE_HEIGHT)
+	body.anim_event.connect(_on_anim_event)
 	# Additive layer for weapon smears so they glow like light, not paint.
 	fx = Node2D.new()
 	var add := CanvasItemMaterial.new()
@@ -393,48 +387,52 @@ func _ensure_sprite() -> void:
 	fx.draw.connect(func(): _draw_weapon_fx(def["trim"]))
 	add_child(fx)
 
+func _on_anim_event(ev: String) -> void:
+	if ev == "step" and state == "run" and is_instance_valid(arena) and arena.has_method("footstep"):
+		arena.footstep(self)
+
+## Plays the real animation for the current state. One-shot swings are time-fitted
+## to feel snappy, and their recovery frames keep playing while the heroine stands still.
+func _drive_anim() -> void:
+	var entered := state != _last_state or state_t + 0.0001 < _last_state_t or (state == "attack" and combo != _last_combo)
+	_last_state = state
+	_last_state_t = state_t
+	_last_combo = combo
+	if downed:
+		body.play("death")
+		return
+	var spear: bool = def["weapon"] == "spear"
+	match state:
+		"attack":
+			var an := "attack%d" % (3 if combo == 0 else combo)
+			if entered:
+				body.play_timed(an, (0.5 if spear else 0.4) if combo == 0 else (0.36 if spear else 0.28))
+		"special":
+			if entered:
+				body.play_timed("special", 0.55)
+		"dash":
+			if entered:
+				body.play_timed("dash", 0.24)
+		"hurt":
+			if entered:
+				body.play_timed("hurt", 0.26)
+		"run":
+			body.play("run")
+			body.set_speed_scale(clampf(vel.length() / maxf(1.0, float(def["speed"])), 0.6, 1.3))
+		_:
+			if body.current in ONE_SHOTS and not body.is_playing_done():
+				return # let the swing's follow-through finish
+			body.set_speed_scale(1.0)
+			body.play("idle")
+
 func _process(_delta: float) -> void:
 	_ensure_sprite()
-	var base := SPRITE_HEIGHT / float(sprite.texture.get_height())
-	var flip := -1.0 if facing.x < -0.05 else 1.0
-	var sq := Vector2.ONE
-	var bob := 0.0
-	var lean := 0.0
-	var off := Vector2.ZERO
-	match state:
-		"run":
-			bob = abs(sin(anim_t * 14.0)) * 4.0
-			sq = Vector2(1.0 - sin(anim_t * 28.0) * 0.03, 1.0 + sin(anim_t * 28.0) * 0.03)
-			lean = 0.08 * flip
-		"attack":
-			var k := clampf(state_t / 0.12, 0.0, 1.0)
-			sq = Vector2(1.14 - 0.14 * k, 0.88 + 0.12 * k)
-			off = facing * 10.0 * (1.0 - k)
-			lean = 0.12 * flip * (1.0 - k)
-		"dash":
-			sq = Vector2(1.3, 0.8)
-			lean = 0.3 * flip
-		"special":
-			var k2 := clampf(state_t / 0.35, 0.0, 1.0)
-			sq = Vector2(0.9 + 0.1 * k2, 1.12 - 0.12 * k2)
-		"hurt":
-			sq = Vector2(1.15, 0.88)
-			lean = -0.15 * flip
-		"downed":
-			lean = 1.35 * flip
-			sq = Vector2(1.0, 0.9)
-		_:
-			sq = Vector2(1.0 + sin(anim_t * 3.0) * 0.012, 1.0 - sin(anim_t * 3.0) * 0.012)
-	sprite.position = off + Vector2(0, -bob)
-	sprite.rotation = lean
-	sprite.scale = Vector2(base * sq.x * flip, base * sq.y)
-	_mat.set_shader_parameter("flash", flash)
+	body.set_facing(facing)
+	_drive_anim()
+	body.flash = flash
 	var blink := iframes > 0.0 and state != "dash" and not downed and int(anim_t * 20) % 2 == 0
-	sprite.modulate.a = 0.5 if blink else (0.35 if state == "dash" else 1.0)
-	if downed:
-		_mat.set_shader_parameter("tint", Color(0.55, 0.55, 0.7))
-	else:
-		_mat.set_shader_parameter("tint", Color.WHITE)
+	var a := 0.5 if blink else (0.6 if state == "dash" else 1.0)
+	body.tint = Color(0.55, 0.55, 0.7, a) if downed else Color(1, 1, 1, a)
 
 func _draw() -> void:
 	var trim: Color = def["trim"]
@@ -447,16 +445,6 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO)
 	while not _ghosts.is_empty() and _ghosts[0][2] <= 0.0:
 		_ghosts.pop_front()
-	if sprite and sprite.texture:
-		var tex := sprite.texture
-		var h := float(tex.get_height())
-		var sc := SPRITE_HEIGHT / h
-		for g in _ghosts:
-			var a: float = g[2] / 0.25
-			var flipx := -1.0 if g[1] else 1.0
-			draw_set_transform(g[0] - position, 0.0, Vector2(sc * flipx, sc))
-			draw_texture(tex, Vector2(-tex.get_width() / 2.0, -h), Color(trim.r, trim.g, trim.b, 0.45 * a))
-		draw_set_transform(Vector2.ZERO)
 	if downed:
 		var frac := revive_progress / 2.0
 		draw_arc(Vector2(0, -70), 20, -PI / 2, -PI / 2 + TAU * frac, 32, Color(0.4, 1.0, 0.6), 6.0)

@@ -1,3 +1,6 @@
 .godot/
 build/
 *.keystore
+tools/anim/fbx_tmp/
+tools/anim/out/
+tools/anim/src/

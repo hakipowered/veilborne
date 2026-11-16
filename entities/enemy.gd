@@ -80,6 +80,8 @@ var _sep_frame := 0
 
 # visuals
 var _sprite: Sprite2D
+var body: AnimSprite
+var _last_vis_state := -1
 var _mat: ShaderMaterial
 var _base_scale := 1.0
 var _anim_t := 0.0
@@ -113,27 +115,25 @@ func setup(p_eid: int, p_kind: String, p_arena: Node, hp_scale: float) -> void:
 
 
 func _build_sprite(d: Dictionary) -> void:
-	if _shader == null:
-		_shader = Shader.new()
-		_shader.code = SHADER_CODE
-	var path: String = d["tex"]
-	var tex: Texture2D = _textures.get(path)
-	if tex == null:
-		tex = load(path) as Texture2D
-		if tex != null:
-			_textures[path] = tex
-	_sprite = Sprite2D.new()
-	_sprite.texture = tex
-	_sprite.centered = true
-	_mat = ShaderMaterial.new()
-	_mat.shader = _shader
-	_sprite.material = _mat
-	if tex != null:
-		var th := float(tex.get_height())
-		_sprite.offset = Vector2(0.0, -th * 0.5)   # feet at node origin
-		_base_scale = _height / th
-	_sprite.scale = Vector2(_base_scale, _base_scale)
-	add_child(_sprite)
+	body = AnimSprite.new()
+	add_child(body)
+	body.setup(kind, _height)
+
+
+## Death: play the real death animation, then free (the arena has already forgotten this enemy).
+func die_visual() -> void:
+	_dead = true
+	hitbox_active = false
+	_show_bar = false
+	queue_redraw()
+	if body == null or not body.has_anim("death"):
+		queue_free()
+		return
+	body.flash = 0.0
+	body.tint = Color.WHITE
+	body.play("death", true)
+	body.anim_finished.connect(func(_a): queue_free())
+	get_tree().create_timer(2.0).timeout.connect(func(): if is_instance_valid(self): queue_free())
 
 
 # ---------------------------------------------------------------- host simulation
@@ -549,53 +549,28 @@ func _update_visuals(delta: float) -> void:
 	_anim_t += delta
 	_flash = maxf(0.0, _flash - delta * 7.0)
 	_hit_sq = maxf(0.0, _hit_sq - delta * 6.0)
-	if _sprite == null:
+	if body == null:
 		return
-	if absf(_flash - _flash_set) > 0.001:
-		_flash_set = _flash
-		_mat.set_shader_parameter(P_FLASH, _flash)
-
-	var sq := Vector2.ONE
 	var bob := 0.0
 	if _hover > 0.0:
 		bob = _hover + sin(_anim_t * 3.0) * _hover * 0.5
-	if _is_windup():
-		var k := clampf(state_t / _windup_len(), 0.0, 1.0)
-		if kind == "brute" or state == S_W_SLAM:
-			sq = Vector2(1.0 - 0.1 * k, 1.0 + 0.16 * k)   # rear up with the maul
-		elif state == S_SUMMON:
-			sq = Vector2(1.0 + 0.06 * sin(_anim_t * 20.0), 1.0 + 0.08 * k)
-		else:
-			sq = Vector2(1.0 + 0.16 * k, 1.0 - 0.14 * k)   # coil
-		sq.x += sin(_anim_t * 40.0) * 0.02 * k              # tremble
-	elif state == S_ATTACK or state == S_BURST or state == S_CHARGE:
-		var k2 := clampf(state_t / 0.15, 0.0, 1.0)
-		if kind == "brute":
-			sq = Vector2(1.25 - 0.25 * k2, 0.78 + 0.22 * k2)   # smash down
-		elif state == S_CHARGE:
-			sq = Vector2(1.18, 0.88)
-		else:
-			sq = Vector2(0.84 + 0.16 * k2, 1.2 - 0.2 * k2)
-	elif state == S_MOVE and _hover <= 0.0:
-		var f := 9.0 if kind == "brute" else 14.0
-		bob = absf(sin(_anim_t * f)) * (4.0 if kind == "brute" else 3.0)
-		sq = Vector2(1.0, 1.0 + sin(_anim_t * f * 2.0) * 0.03)
+	body.position = Vector2(0.0, -bob)
+	var attacking := _is_windup() or state == S_ATTACK or state == S_BURST or state == S_CHARGE
+	body.set_facing(aim if attacking else Vector2(facing_sign, 0.35))
+	if state == S_HURT and _last_vis_state != S_HURT:
+		body.play("hurt", true)
 	else:
-		sq = Vector2(1.0, 1.0 + sin(_anim_t * 2.4) * 0.02)
-	if _hit_sq > 0.0:
-		var h := _hit_sq * _hit_sq
-		sq = Vector2(sq.x * (1.0 + 0.2 * h), sq.y * (1.0 - 0.18 * h))
-
-	_sprite.scale = Vector2(_base_scale * sq.x * facing_sign, _base_scale * sq.y)
-	_sprite.position = Vector2(0.0, -bob)
+		body.play_enemy_state(state, _windup_len() if _is_windup() else 0.0)
+	_last_vis_state = state
+	body.flash = _flash
 	if burning:
 		var p := 0.5 + 0.5 * sin(_anim_t * 12.0)
-		_sprite.modulate = Color(1.0, 0.78 - 0.18 * p, 0.55 - 0.3 * p)
+		body.tint = Color(1.0, 0.78 - 0.18 * p, 0.55 - 0.3 * p)
 	elif phase2 and kind == "regent":
 		var p2 := 0.5 + 0.5 * sin(_anim_t * 4.0)
-		_sprite.modulate = Color(1.0, 0.85 + 0.1 * p2, 1.0)
+		body.tint = Color(1.0, 0.75 + 0.1 * p2, 0.95)
 	else:
-		_sprite.modulate = Color.WHITE
+		body.tint = Color.WHITE
 	queue_redraw()
 
 

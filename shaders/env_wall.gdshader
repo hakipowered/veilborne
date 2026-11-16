@@ -13,8 +13,8 @@ uniform vec4 glow_key : source_color = vec4(0.5, 0.3, 1.0, 1.0);
 uniform float glow_strength = 0.0;
 uniform float candle_flicker = 0.35;
 uniform int light_count = 0;
-uniform vec4 light_a[12];
-uniform vec4 light_b[12];
+uniform vec4 light_a[6];
+uniform vec4 light_b[6];
 uniform float ambient = 0.78;
 
 varying vec2 world;
@@ -37,16 +37,13 @@ void fragment() {
 	c += glow_key.rgb * gk * glow_strength * pulse;
 
 	vec3 light = vec3(ambient);
-	for (int i = 0; i < 12; i++) {
+	for (int i = 0; i < 6; i++) {
 		if (i >= light_count) break;
 		vec4 a = light_a[i];
-		vec4 b = light_b[i];
-		vec2 d = world - a.xy;
+		vec2 d = (world - a.xy) / (a.z * 1.1);
 		d.y *= 0.8;
-		float att = clamp(1.0 - length(d) / (a.z * 1.1), 0.0, 1.0);
-		att *= att;
-		float f2 = 1.0 - b.a * (0.5 + 0.5 * sin(TIME * (6.3 + float(i) * 1.7) + float(i) * 2.1));
-		light += b.rgb * att * a.w * f2 * 0.8;
+		float att = max(1.0 - dot(d, d), 0.0);
+		light += light_b[i].rgb * (att * att * a.w * 0.8);
 	}
 	c *= light * shade;
 	// ceiling darkness + floor contact shadow

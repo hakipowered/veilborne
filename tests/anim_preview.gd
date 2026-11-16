@@ -6,7 +6,7 @@ extends Node2D
 
 const HERO_ANIMS := ["idle", "run", "attack1", "attack2", "attack3", "dash", "special", "hurt", "death"]
 const ENEMY_ANIMS := ["idle", "move", "windup", "attack", "hurt", "death", "cast", "charge"]
-const HEIGHTS := {"kaela": 132.0, "liora": 132.0, "shade": 110.0, "spitter": 80.0, "brute": 150.0, "regent": 230.0}
+const HEIGHTS := {"kaela": 132.0, "liora": 132.0, "shade": 110.0, "spitter": 80.0, "brute": 150.0, "regent": 260.0}
 
 var out := "/tmp"
 var chars: Array = ["kaela", "liora", "shade", "spitter", "brute", "regent"]

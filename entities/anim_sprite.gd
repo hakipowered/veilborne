@@ -43,6 +43,10 @@ var _t := 0.0
 var _scale := 1.0
 var _done := false
 var _facing := Vector2.DOWN
+var _fit := 1.0             # per-anim time stretch from play_timed(); reset by play()
+
+## enemy.gd state code (S_IDLE..S_SUMMON) -> anim; "" = recover (let the attack finish, then idle)
+const ENEMY_STATE_ANIM := ["idle", "move", "windup", "attack", "", "hurt", "windup", "attack", "windup", "charge", "windup", "cast"]
 
 
 func setup(p_character_id: String, target_height_px: float) -> void:
@@ -138,12 +142,49 @@ func play(anim: String, restart := false) -> void:
 		else:
 			return
 	current = anim
+	_fit = 1.0
 	_anim = _data["anims"][anim]
 	_t = 0.0
 	frame = 0
 	_done = false
 	_show()
 	_fire_events(-1, 0)
+
+
+## play an anim stretched/squeezed to last `seconds` (e.g. an AI windup of variable length).
+func play_timed(anim: String, seconds: float, restart := true) -> void:
+	play(anim, restart)
+	var n := get_anim_length(current)
+	if seconds > 0.01 and n > 0.0:
+		_fit = n / seconds
+
+
+## hero.gd helper: state ("idle","run","attack","dash","special","hurt","downed") + combo counter.
+## hero.gd increments combo BEFORE acting, so combo 1 -> attack1, 2 -> attack2, 0 -> attack3 (finisher).
+func play_hero_state(state: String, combo: int) -> void:
+	match state:
+		"attack":
+			play("attack%d" % (3 if combo == 0 else combo))
+		"downed", "dead":
+			play("death")
+		_:
+			play(state)
+
+
+## enemy.gd helper: packed state code -> anim. Windups can be fitted to the AI's windup length.
+func play_enemy_state(code: int, windup_seconds := 0.0) -> void:
+	if code < 0 or code >= ENEMY_STATE_ANIM.size():
+		return
+	var a: String = ENEMY_STATE_ANIM[code]
+	if a == "":
+		if (current == "attack" or current == "cast" or current == "charge") and not _done:
+			return
+		a = "idle"
+	if a == "windup" and windup_seconds > 0.0:
+		if current != "windup":
+			play_timed("windup", windup_seconds)
+		return
+	play(a)
 
 
 func set_facing(dir: Vector2) -> void:
@@ -211,7 +252,7 @@ func get_scale_factor() -> float:
 func _process(delta: float) -> void:
 	if _anim.is_empty() or _done:
 		return
-	_t += delta * speed_scale * float(_anim["fps"])
+	_t += delta * speed_scale * _fit * float(_anim["fps"])
 	var n: int = _anim["n"]
 	var f := int(_t)
 	if f >= n:

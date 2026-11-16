@@ -37,7 +37,7 @@ FB = "res://tools/anim/fbx_tmp/"
 C["liora"] = {
     "model": FB + "l_a0.fbx",
     "clip_files": [FB + "l_%s.fbx" % x for x in ["a0", "a1", "a5", "a6", "a7", "a8", "run"]],
-    "up_axis": 2, "cell": 256, "ss": 2, "cam_size": 2.7, "center_y": 0.9, "elev": 40, "height_m": 1.72,
+    "up_axis": 2, "cell": 288, "ss": 2, "cam_size": 3.04, "center_y": 0.9, "elev": 40, "height_m": 1.72,
     "props": [
         {"type": "crescent", "bone": "RightHand", "pos": [0, 0.08, 0], "rot": [0, 0, 0], "curve": 1},
         {"type": "crescent", "bone": "LeftHand", "pos": [0, 0.08, 0], "rot": [0, 0, 0], "curve": -1},
@@ -58,7 +58,7 @@ C["liora"] = {
 C["kaela"] = {
     "model": FB + "k_a0.fbx",
     "clip_files": [FB + "k_%s.fbx" % x for x in ["a0", "a1", "a2", "a3", "a5", "a7", "a8", "run"]] + [FB + "l_a6.fbx"],
-    "up_axis": 2, "cell": 352, "ss": 2, "cam_size": 3.5, "center_y": 0.9, "elev": 40, "height_m": 1.75,
+    "up_axis": 2, "cell": 480, "ss": 2, "cam_size": 4.78, "center_y": 0.9, "elev": 40, "height_m": 1.75,
     "props": [{"type": "spear", "bone": "RightHand", "pos": [0, 0.08, 0], "rot": [90, 0, 0]}],
     "anims": {
         "idle": dict(lin("Combat_Stance", 0, 1, 10, 6, True), yaw=0),
@@ -102,7 +102,7 @@ C["spitter"] = {
 C["brute"] = {
     "model": FB + "b_a0.fbx",
     "clip_files": [FB + "b_a%d.fbx" % i for i in range(5)],
-    "up_axis": 2, "cell": 352, "ss": 2, "cam_size": 3.6, "center_y": 1.0, "elev": 40, "height_m": 2.1,
+    "up_axis": 2, "cell": 352, "ss": 2, "cam_size": 3.6, "center_y": 1.0, "elev": 40, "height_m": 2.55,
     "anims": {
         "idle": lin("Idle", 0, 1, 10, 8, True),
         "move": lin("Slow_Orc_Walk", 0, 1, 8, 10, True, {"step": [0, 4]}),
@@ -117,7 +117,7 @@ C["brute"] = {
 C["regent"] = {
     "model": "regent/r_a0.glb",
     "clip_files": ["regent/r_a%d.glb" % i for i in range(5)] + ["regent/r_walk.glb"],
-    "up_axis": 1, "cell": 384, "ss": 2, "cam_size": 4.0, "center_y": 1.1, "elev": 40, "height_m": 2.4,
+    "up_axis": 1, "cell": 448, "ss": 2, "cam_size": 3.5, "center_y": 0.75, "elev": 40, "height_m": 2.2,
     "anims": {
         "idle": lin("Idle_02", 0, 1, 12, 8, True),
         "move": lin("r_walk", 0, 1, 8, 11, True, {"step": [0, 4]}),
