@@ -37,6 +37,9 @@ var _send_timer := 0.0
 var _buffer: Array = [] ## [[time, state_array]]
 var touch = null ## TouchControls (or any object with move/attack/special/dash) for local_index 0
 var _prev_buttons := {}
+var _buffer_t := {"attack": 0.0, "special": 0.0, "dash": 0.0}
+var _ghosts: Array = [] ## [pos, flipped, life] dash afterimages
+var _ghost_timer := 0.0
 
 func setup(p_key: String, p_hero: String, p_controlled: bool, p_local: int, p_arena: Node) -> void:
 	key = p_key
@@ -159,8 +162,17 @@ func _physics_process(delta: float) -> void:
 func _simulate(delta: float) -> void:
 	var inp := _read_input()
 	var mv: Vector2 = inp["move"]
-	var pr: Dictionary = inp["pressed"]
+	# Input buffer: a press stays valid for a short window so combos and dash-cancels feel crisp.
+	for k in inp["pressed"].keys():
+		if inp["pressed"][k]:
+			_buffer_t[k] = 0.16
+	var pr := {}
+	for k in _buffer_t.keys():
+		_buffer_t[k] = maxf(0.0, _buffer_t[k] - delta)
+		pr[k] = _buffer_t[k] > 0.0
 	state_t += delta
+	for g in _ghosts:
+		g[2] -= delta
 	attack_cd = max(0.0, attack_cd - delta)
 	special_cd = max(0.0, special_cd - delta)
 	iframes = max(0.0, iframes - delta)
@@ -191,20 +203,22 @@ func _simulate(delta: float) -> void:
 		_set_state("dash")
 		iframes = 0.22
 		vel = dir * speed * 3.4
+		_buffer_t["dash"] = 0.0
+		_ghost_timer = 0.0
 		_act("dash", position, dir)
 	elif pr["attack"] and attack_cd <= 0.0 and state in ["idle", "run", "attack"]:
-		if mv.length() > 0.1:
-			facing = mv.normalized()
+		facing = _aim(mv)
+		_buffer_t["attack"] = 0.0
 		combo = (combo + 1) % 3
 		combo_window = 0.6
 		var spd := 0.32 if def["weapon"] == "spear" else 0.2
 		attack_cd = spd
 		_set_state("attack")
-		vel = facing * 120.0
+		vel = facing * (260.0 if def["weapon"] == "spear" else 200.0) * (1.4 if combo == 0 else 1.0)
 		_act("attack%d" % combo, position, facing)
 	elif pr["special"] and special_cd <= 0.0 and state in ["idle", "run", "attack"]:
-		if mv.length() > 0.1:
-			facing = mv.normalized()
+		facing = _aim(mv)
+		_buffer_t["special"] = 0.0
 		special_cd = 2.6
 		_set_state("special")
 		vel = Vector2.ZERO
@@ -212,6 +226,10 @@ func _simulate(delta: float) -> void:
 
 	match state:
 		"dash":
+			_ghost_timer -= delta
+			if _ghost_timer <= 0.0:
+				_ghost_timer = 0.035
+				_ghosts.append([position, facing.x < -0.05, 0.25])
 			if state_t > 0.18:
 				_set_state("idle")
 				vel *= 0.25
@@ -232,6 +250,21 @@ func _simulate(delta: float) -> void:
 
 	position += vel * delta
 	position = arena.resolve_collision(position, 16.0)
+
+## Aim assist for touch: snap toward the nearest enemy in front, else use the stick.
+func _aim(mv: Vector2) -> Vector2:
+	var want := mv.normalized() if mv.length() > 0.1 else facing
+	var best := Vector2.ZERO
+	var bd := 230.0 * 230.0
+	for e in arena.enemies():
+		if e.hp <= 0:
+			continue
+		var to: Vector2 = e.position - position
+		var d := to.length_squared()
+		if d < bd and absf(want.angle_to(to)) < deg_to_rad(70.0):
+			bd = d
+			best = to
+	return best.normalized() if best != Vector2.ZERO else want
 
 func _set_state(s: String, reset := true) -> void:
 	if s != state or reset:
@@ -411,6 +444,18 @@ func _draw() -> void:
 	if controlled:
 		draw_arc(Vector2.ZERO, 36, facing.angle() - 0.35, facing.angle() + 0.35, 10, Color.WHITE, 5.0)
 	draw_set_transform(Vector2.ZERO)
+	while not _ghosts.is_empty() and _ghosts[0][2] <= 0.0:
+		_ghosts.pop_front()
+	if sprite and sprite.texture:
+		var tex := sprite.texture
+		var h := float(tex.get_height())
+		var sc := SPRITE_HEIGHT / h
+		for g in _ghosts:
+			var a: float = g[2] / 0.25
+			var flipx := -1.0 if g[1] else 1.0
+			draw_set_transform(g[0] - position, 0.0, Vector2(sc * flipx, sc))
+			draw_texture(tex, Vector2(-tex.get_width() / 2.0, -h), Color(trim.r, trim.g, trim.b, 0.45 * a))
+		draw_set_transform(Vector2.ZERO)
 	if downed:
 		var frac := revive_progress / 2.0
 		draw_arc(Vector2(0, -70), 20, -PI / 2, -PI / 2 + TAU * frac, 32, Color(0.4, 1.0, 0.6), 6.0)
