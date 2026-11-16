@@ -78,6 +78,9 @@ func default_save() -> Dictionary:
 		"last_played": "", "intro_seen": false, "story_chapter": 0,
 		"shards": 0, "meta": {}, "runs": 0, "wins": 0, "best_room": 0,
 		"last_hero": "kaela", "codex": [],
+		# --- STORY (owned by data/story_db.gd; see StoryDB.default_progress) ---
+		"story": {"flags": {}, "played": {}, "last_death_by": "", "chapter_reached": 0, "bosses_beaten": {}, "gifts": {}},
+		# --- end STORY ---
 	}
 
 func peek_slot(m: String, s: int) -> Dictionary:
