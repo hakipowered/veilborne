@@ -5,10 +5,11 @@ extends CanvasLayer
 const VERSION_CODE := 6
 const VERSION_NAME := "0.3.2"
 const REPO := "hakipowered/veilborne"
-## The "downloads" branch always holds exactly the newest build.
-const MANIFEST_URL := "https://raw.githubusercontent.com/" + REPO + "/downloads/version.json"
-const APK_URL := "https://raw.githubusercontent.com/" + REPO + "/downloads/Veilborne.apk"
-const DOWNLOAD_PAGE := "https://github.com/" + REPO + "/tree/downloads"
+## Cloudflare Worker that serves the newest build (no size limit; see tools/cloudflare/worker.js).
+const DL := "https://veilborne-download.hakipowered.workers.dev"
+const MANIFEST_URL := DL + "/version.json"
+const APK_URL := DL + "/Veilborne.apk"
+const DOWNLOAD_PAGE := DL + "/"
 
 const APK_PATH := "user://update.apk"
 
