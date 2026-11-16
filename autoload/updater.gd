@@ -2,8 +2,8 @@ extends CanvasLayer
 ## Checks the repo's downloads branch for a newer build on launch and offers a one-tap update.
 ## The URLs never change, so one link always installs the newest version.
 
-const VERSION_CODE := 6
-const VERSION_NAME := "0.3.2"
+const VERSION_CODE := 7
+const VERSION_NAME := "0.4.0"
 const REPO := "hakipowered/veilborne"
 ## Cloudflare Worker that serves the newest build (no size limit; see tools/cloudflare/worker.js).
 const DL := "https://veilborne-download.hakipowered.workers.dev"

@@ -100,6 +100,8 @@ static func portrait_tex(id: String) -> Texture2D:
 	var t := tex("hero_" + id)
 	if t == null:
 		t = tex("warden_" + id)
+	if t == null:
+		t = tex("portrait_" + id)
 	return t
 
 
