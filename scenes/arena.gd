@@ -15,14 +15,22 @@ const RETICLE_TEX := preload("res://art/fx/reticle.webp")
 const ARCH_TEX := preload("res://art/fx/veil_arch.webp")
 const VTheme = preload("res://ui/theme.gd")
 
-const ROOMS := [
-	{"floor": "catacomb", "name": "Gilded Catacombs I", "waves": [["shade", "shade", "shade"], ["shade", "spitter", "shade", "spitter"]]},
-	{"floor": "catacomb", "name": "Gilded Catacombs II", "waves": [["spitter", "spitter", "shade", "shade"], ["brute", "shade", "shade"]]},
-	{"floor": "catacomb", "name": "Gilded Catacombs III", "waves": [["brute", "spitter", "spitter"], ["shade", "shade", "shade", "shade", "spitter"]]},
-	{"floor": "catacomb", "name": "Gilded Catacombs IV", "waves": [["brute", "brute", "spitter"], ["shade", "shade", "spitter", "spitter", "brute"]]},
-	{"floor": "throne", "name": "Throne of the Hollow Regent", "boss": true, "waves": []},
-]
-const KINDS := ["shade", "spitter", "brute", "regent"]
+const StoryDB = preload("res://data/story_db.gd")
+const FALLBACK_KINDS := ["shade", "spitter", "brute"]
+const HAZARD_TICK := 0.1
+## Enemy kinds by snapshot id (enemy.gd KIND_IDS, filled in _ready).
+var KINDS: Array = ["shade", "spitter", "brute", "regent"]
+var _kind_defs: Dictionary = {}
+var _edata: Dictionary = {} ## data/enemies.gd constants (CHAPTER_ENEMIES, NAMES, BOSS_SPEAKER)
+var plan_room: Dictionary = {} ## Game.plan_room(room_index)
+var boss_kind := ""
+var boss_spawned := false
+var _waves: Array = []
+var _props: Array = [] ## standing breakables (env.get_breakables, refreshed on build / break)
+var _prop_hits: Array = []
+var _haz_t := 0.0
+var props_broken := 0 ## stats / tests
+var _ehaz_t := 0.0
 
 var EnemyScript: GDScript
 var env: Node2D
@@ -71,9 +79,21 @@ var _icons := {}
 
 func _ready() -> void:
 	EnemyScript = load("res://entities/enemy.gd")
+	if EnemyScript:
+		var cm: Dictionary = EnemyScript.get_script_constant_map()
+		KINDS = cm.get("KIND_IDS", KINDS)
+		_kind_defs = cm.get("KINDS", {})
+	if ResourceLoader.exists("res://data/enemies.gd"):
+		var ed = load("res://data/enemies.gd")
+		if ed:
+			_edata = ed.get_script_constant_map()
 	Net.arena = self
 	env = preload("res://scenes/environment.gd").new()
 	add_child(env)
+	if env.has_signal("debris_impact"):
+		env.debris_impact.connect(_on_debris)
+	if env.has_signal("prop_broken"):
+		env.prop_broken.connect(_on_prop_broken)
 	var add_mat := CanvasItemMaterial.new()
 	add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	groundfx = Node2D.new()
@@ -165,7 +185,7 @@ func _voice_enemies() -> void:
 		if st == prev:
 			continue
 		_enemy_states[e.eid] = st
-		if prev == -1 and e.kind == "regent":
+		if prev == -1 and e.is_boss:
 			sfx("regent_roar", e.position)
 			shake(14.0)
 		match e.kind:
@@ -218,7 +238,11 @@ func resolve_collision(pos: Vector2, radius: float) -> Vector2:
 
 func _load_room(idx: int, reward := "") -> void:
 	room_index = idx
-	room_reward = reward if reward != "" else ("boon" if idx == 0 else "")
+	plan_room = Game.plan_room(idx)
+	var ch := int(plan_room["chapter"])
+	var is_boss_room: bool = plan_room["type"] == "boss"
+	var new_chapter: bool = idx == 0 or int(Game.plan_room(idx - 1)["chapter"]) != ch
+	room_reward = reward if reward != "" else ("boon" if idx == 0 or is_boss_room else "")
 	door_rewards.clear()
 	door_points.clear()
 	casts.clear()
@@ -228,10 +252,17 @@ func _load_room(idx: int, reward := "") -> void:
 	if _arch:
 		_arch.visible = false
 	Game.run_room = idx
-	var room: Dictionary = ROOMS[idx]
-	env.build(room["floor"], idx, Game.run_seed + idx)
+	Game.run_chapter = ch
+	# exits: boss halls lead on to the next chapter (none after the last); the chamber before a boss has one gate
+	var exits := -1
+	if is_boss_room:
+		exits = 0 if plan_room["final"] else 1
+	elif idx + 1 < Game.run_plan.size() and Game.plan_room(idx + 1)["type"] == "boss":
+		exits = 1
+	env.build(plan_room["floor"], idx, Game.run_seed + idx, exits)
 	env.add_ysorted_props_to(entities)
 	room_half = env.get_bounds_half()
+	_refresh_props()
 	for e in enemy_nodes.values():
 		if is_instance_valid(e):
 			e.queue_free()
@@ -242,35 +273,149 @@ func _load_room(idx: int, reward := "") -> void:
 	wave_delay = 1.2
 	room_clear = false
 	door_open = false
-	boss_pending = room.get("boss", false)
+	boss_spawned = false
+	boss_kind = _boss_kind(ch) if is_boss_room else ""
+	boss_pending = is_boss_room
+	_waves = [] if is_boss_room else _build_waves(idx, plan_room)
 	var i := 0
 	var n := hero_nodes.size()
 	var start: Vector2 = env.get_player_start()
 	for h in heroes():
 		h.position = start + (Vector2(-120 + 240.0 * i / max(1, n - 1), 0) if n > 1 else Vector2.ZERO)
 		h.vel = Vector2.ZERO
+		h.hazard_slow = 0.0
 		h._buffer.clear()
 		i += 1
 	camera.position = start
 	camera.reset_smoothing()
-	hud.set_room_name("%s  ·  %d/%d" % [room["name"], idx + 1, ROOMS.size()])
-	_music("boss" if room.get("boss", false) else "catacombs")
-	if boss_pending:
+	var cname: String = Game.CHAPTER_NAMES[ch - 1]
+	var rname: String = env.get_room_title() if env.has_method("get_room_title") else ""
+	if is_boss_room:
+		rname = _enemy_name(boss_kind)
+	elif plan_room["type"] == "elite":
+		rname = "Champion's Hall"
+	var roman: String = ["I", "II", "III", "IV"][ch - 1]
+	if rname == "":
+		rname = cname
+	hud.set_room_name("%s  ·  %s  ·  %d/%d" % [roman, rname, int(plan_room["n"]), int(plan_room["count"])])
+	if is_boss_room:
+		_music("boss_regent" if plan_room["final"] else "boss_general")
+	else:
+		_music(["catacombs", "garden", "forge", "throne"][ch - 1])
+	var lines: Array = []
+	if idx == 0:
+		lines = StoryDB.next_lines("run_start", StoryDB.from_save(Game.data))
+		Game.save_slot()
+	if new_chapter:
+		var title: String = env.get_chapter_title(plan_room["floor"]) if env.has_method("get_chapter_title") else cname
+		var narr := _narrate("run_start" if idx == 0 and lines.is_empty() else "chapter_%d" % ch)
+		hud.show_chapter_card(title, narr)
+	if is_boss_room:
 		wave_delay = 999.0
-		_play_dialogue("PRE_BOSS", func():
+		var spk := _boss_speaker(boss_kind)
+		lines = StoryDB.boss_intro(spk, StoryDB.from_save(Game.data))
+		Game.save_slot()
+		_play_lines(lines, func():
 			if is_authority() and boss_pending:
 				wave_delay = 0.6)
+	elif not lines.is_empty():
+		wave_delay = 999.0
+		_play_lines(lines, func():
+			if is_authority() and wave_index == 0 and not room_clear:
+				wave_delay = 1.0)
 
-func _play_dialogue(const_name: String, done: Callable) -> void:
+## Narrator line for a context (voice clip when one exists); "" when there is none.
+func _narrate(ctx: String) -> String:
+	if _audio == null:
+		_audio = get_node_or_null("/root/Audio")
+	if _audio and _audio.has_method("voice"):
+		return String(_audio.voice("narrator", ctx))
+	return StoryDB.narration(ctx)
+
+func _play_lines(lines: Array, done: Callable) -> void:
 	var main := get_tree().root.get_node_or_null("Main")
-	var story = load("res://data/story.gd")
-	var lines = null
-	if story:
-		lines = story.get_script_constant_map().get(const_name)
-	if main and main.has_method("play_dialogue") and lines is Array:
+	if main and main.has_method("play_dialogue") and not lines.is_empty():
 		main.play_dialogue(lines, done)
 	else:
 		done.call()
+
+# ---------------------------------------------------------------- chapter roster
+
+func _chapter_def(ch: int) -> Dictionary:
+	var ce: Dictionary = _edata.get("CHAPTER_ENEMIES", {})
+	return ce.get(clampi(ch, 1, 4), {})
+
+func _valid_kind(k: String) -> bool:
+	return _kind_defs.is_empty() or _kind_defs.has(k)
+
+func _boss_kind(ch: int) -> String:
+	var k := String(_chapter_def(ch).get("boss", "regent"))
+	return k if _valid_kind(k) else "regent"
+
+func _boss_speaker(kind: String) -> String:
+	return String(_edata.get("BOSS_SPEAKER", {}).get(kind, "regent"))
+
+func _enemy_name(kind: String) -> String:
+	return String(_edata.get("NAMES", {}).get(kind, kind.capitalize()))
+
+func _is_boss_kind(kind: String) -> bool:
+	return bool(_kind_defs.get(kind, {}).get("boss", kind == "regent"))
+
+## Waves for a chamber (deterministic per seed). Each entry: [kind, hp_mult].
+## Bigger and more varied each chapter; the mid-chapter hall ends with an elite.
+func _build_waves(idx: int, room: Dictionary) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("waves:%d:%d" % [Game.run_seed, idx])
+	var ch := int(room["chapter"])
+	var n := int(room["n"])
+	var cd := _chapter_def(ch)
+	var kinds: Array = []
+	for k in cd.get("kinds", FALLBACK_KINDS):
+		if _valid_kind(String(k)):
+			kinds.append(String(k))
+	var fallback := kinds.is_empty()
+	if fallback:
+		kinds = FALLBACK_KINDS.duplicate()
+	var elites: Array = []
+	for k in cd.get("elites", []):
+		if _valid_kind(String(k)):
+			elites.append(String(k))
+	if elites.is_empty():
+		elites = ["brute"]
+	var hp_mult := 1.0 + 0.35 * (ch - 1) if fallback else 1.0
+	var nw := 2 + (1 if n >= 4 or ch >= 3 else 0)
+	var out: Array = []
+	var roles: Dictionary = _edata.get("ROLES", {"brute": "tank", "spitter": "ranged"})
+	# heavies and shooters are rationed so a wave mixes a front line with a few backliners
+	var max_tank := 0 if ch == 1 and n <= 2 else (1 if ch <= 2 else 2)
+	var max_back := 2 if ch <= 2 else 3
+	for w in range(nw):
+		var size := mini(3 + ch / 2 + n / 3 + w, 8)
+		var wave: Array = []
+		var tanks := 0
+		var backs := 0
+		for j in range(size):
+			var k: String = kinds[rng.randi() % kinds.size()]
+			for tries in range(4):
+				var role := String(roles.get(k, "rush"))
+				if role == "tank" and tanks >= max_tank or (role == "ranged" or role == "summon") and backs >= max_back:
+					k = kinds[rng.randi() % kinds.size()]
+					continue
+				break
+			var rl := String(roles.get(k, "rush"))
+			if rl == "tank":
+				tanks += 1
+			elif rl == "ranged" or rl == "summon":
+				backs += 1
+			wave.append([k, hp_mult])
+		out.append(wave)
+	var last: Array = out[out.size() - 1]
+	if room["type"] == "elite":
+		last.resize(mini(last.size(), 2))
+		last.push_front([elites[rng.randi() % elites.size()], hp_mult * 1.25])
+	elif ch >= 2 and n > int(room["count"]) / 2 and rng.randf() < 0.4:
+		last[0] = [elites[rng.randi() % elites.size()], hp_mult]
+	return out
 
 func _update_waves(delta: float) -> void:
 	if room_clear or run_over:
@@ -284,18 +429,19 @@ func _update_waves(delta: float) -> void:
 	wave_delay -= delta
 	if wave_delay > 0.0:
 		return
-	var room: Dictionary = ROOMS[room_index]
 	if boss_pending:
 		boss_pending = false
-		spawn_enemy("regent", Vector2(0, -room_half.y * 0.35))
+		boss_spawned = true
+		spawn_enemy(boss_kind, Vector2(0, -room_half.y * 0.35))
 		wave_delay = 0.5
 		return
-	if room.get("boss", false):
-		return # boss dead is handled in on_enemy_killed
-	var waves: Array = room["waves"]
-	if wave_index < waves.size():
-		for kind in waves[wave_index]:
-			var sp: Array = env.get_spawn_points()
+	if boss_spawned:
+		if not plan_room.get("final", false):
+			_broadcast("clear", [])
+		return # the final boss's fall is handled in _on_kill
+	if wave_index < _waves.size():
+		var sp: Array = env.get_spawn_points()
+		for entry in _waves[wave_index]:
 			var pos := Vector2.ZERO
 			if sp.size() > 0:
 				pos = sp[_rng.randi() % sp.size()] + Vector2(_rng.randf_range(-60, 60), _rng.randf_range(-30, 30))
@@ -303,7 +449,10 @@ func _update_waves(delta: float) -> void:
 				var ang := _rng.randf() * TAU
 				pos = Vector2(cos(ang) * room_half.x * 0.55, sin(ang) * room_half.y * 0.45)
 			pos = resolve_collision(pos, 30.0)
-			spawn_enemy(kind, pos)
+			# keep spawns off hazards so foes don't appear in lava
+			if env.hazard_at(pos)["dps"] > 0.0:
+				pos = resolve_collision(pos * 0.5, 30.0)
+			spawn_enemy(String(entry[0]), pos, float(entry[1]))
 		wave_index += 1
 		wave_delay = 0.9
 	else:
@@ -313,7 +462,7 @@ func _update_waves(delta: float) -> void:
 func try_advance(door := 0) -> void:
 	if not room_clear or run_over:
 		return
-	if room_index + 1 >= ROOMS.size():
+	if room_index + 1 >= Game.run_plan.size():
 		return
 	var reward := ""
 	if door >= 0 and door < door_rewards.size():
@@ -324,23 +473,30 @@ func try_advance(door := 0) -> void:
 
 # ---------------------------------------------------------------- spawning (host)
 
-func _hp_scale() -> float:
-	return (1.0 + 0.65 * (hero_nodes.size() - 1)) * (1.0 + room_index * 0.12)
+## Health multiplier: partners, chapter depth, and depth within the chapter (bosses scale by chapter only).
+func _hp_scale(kind := "") -> float:
+	var players := 1.0 + 0.65 * (hero_nodes.size() - 1)
+	var ch := int(plan_room.get("chapter", 1))
+	if _is_boss_kind(kind):
+		return players * (1.0 + 0.1 * (ch - 1))
+	return players * (1.0 + 0.18 * (ch - 1)) * (1.0 + (int(plan_room.get("n", 1)) - 1) * 0.06)
 
-func spawn_enemy(kind: String, pos: Vector2) -> Node:
+func spawn_enemy(kind: String, pos: Vector2, hp_mult := 1.0) -> Node:
 	if not is_authority() or EnemyScript == null:
 		return null
 	if enemy_nodes.size() >= 24:
 		return null
-	var e = _make_enemy(next_eid, kind)
+	if not _valid_kind(kind):
+		kind = FALLBACK_KINDS[0]
+	var e = _make_enemy(next_eid, kind, hp_mult)
 	next_eid += 1
 	e.position = resolve_collision(pos, 20.0)
 	spark(e.position + Vector2(0, -30), Color(0.8, 0.5, 1.0), 14)
 	return e
 
-func _make_enemy(eid: int, kind: String) -> Node:
+func _make_enemy(eid: int, kind: String, hp_mult := 1.0) -> Node:
 	var e: Node2D = EnemyScript.new()
-	e.setup(eid, kind, self, _hp_scale())
+	e.setup(eid, kind, self, _hp_scale(kind) * hp_mult)
 	entities.add_child(e)
 	enemy_nodes[eid] = e
 	return e
@@ -468,6 +624,9 @@ func _resolve_action(hero: Node, action: String, pos: Vector2, dir: Vector2, seq
 				targets.append(e)
 		if strike > 0.0:
 			_rings.append([pos + dir * 150.0, 50.0, 0.25, 0.25, hero.wdef["color"]])
+	if mode == MODE_AUTH and action.begins_with("attack") and not _props.is_empty():
+		var rr: float = float(wd["reach"]) * hero.reach_mult() * 0.5 + 20.0
+		_hit_props(pos + dir * rr, rr)
 	if targets.is_empty():
 		return
 	var big := false
@@ -577,6 +736,8 @@ func _area_hit(c: Dictionary, hero: Node, at: Vector2, r: float, dmg: float, sal
 	var n := 0
 	if int(c["mode"]) == MODE_VISUAL:
 		return 0
+	if int(c["mode"]) == MODE_AUTH and not _props.is_empty():
+		_hit_props(at, r)
 	var hits: Dictionary = c["hits"]
 	for e in _ecache:
 		if e.hp <= 0 or not _in_ellipse(e.position, at, r + e.radius):
@@ -839,6 +1000,8 @@ func _update_hshots(delta: float) -> void:
 		if dead:
 			if s["life"] > 0.0:
 				spark(s["pos"] + Vector2(0, -30), s["color"], 5)
+				if int(s["mode"]) == MODE_AUTH and not _props.is_empty():
+					_hit_props(s["pos"], 30.0)
 			hshots.remove_at(i)
 		i -= 1
 
@@ -868,6 +1031,118 @@ func on_enemy_killed(enemy: Node, attacker_key: String) -> void:
 	if not is_authority() or not is_instance_valid(enemy):
 		return
 	_broadcast("kill", [enemy.eid, attacker_key, enemy.position, enemy.kind])
+
+# ---------------------------------------------------------------- killers (story)
+
+func _killer_id(kind: String) -> String:
+	return _boss_speaker(kind) if _is_boss_kind(kind) else kind
+
+## Who probably fired a shot / slam at `pos`: the closest foe (every device decides for itself).
+func _src_near(pos: Vector2) -> String:
+	var best: Node = null
+	var bd := INF
+	for e in enemy_nodes.values():
+		if is_instance_valid(e):
+			var d: float = e.position.distance_squared_to(pos)
+			if d < bd:
+				bd = d
+				best = e
+	return _killer_id(best.kind) if best else ""
+
+func on_hero_downed(h: Node) -> void:
+	if not h.controlled:
+		return
+	Game.run_killer = String(h.last_hit_by)
+	var spk := Game.run_killer
+	if StoryDB.BOSS_IDS.has(spk):
+		var t := StoryDB.boss_taunt(spk)
+		if t != "":
+			hud.subtitle("“%s”" % t, Color(1, 0.6, 0.55))
+
+# ---------------------------------------------------------------- environment: hazards, debris, breakables
+
+func _refresh_props() -> void:
+	_props = env.get_breakables() if env.has_method("get_breakables") else []
+
+func _on_prop_broken(_id: int, _pos: Vector2) -> void:
+	_refresh_props()
+
+## Host: weapon blows shatter urns in the struck area. Each prop's drop is fixed by the seed.
+func _hit_props(at: Vector2, r: float) -> void:
+	if not is_authority() or _props.is_empty():
+		return
+	_prop_hits.clear()
+	for b in _props:
+		if _in_ellipse(b["pos"], at, r + float(b["radius"])):
+			_prop_hits.append(int(b["id"]))
+	for id in _prop_hits:
+		var prng := RandomNumberGenerator.new()
+		prng.seed = hash("prop:%d:%d:%d" % [Game.run_seed, room_index, id])
+		var roll := prng.randf()
+		var drop := "gold" if roll < 0.14 else ("heal" if roll < 0.22 else "")
+		_broadcast("break", [id, drop])
+
+func _net_break(id: int, drop: String) -> void:
+	var pos := Vector2.INF
+	for b in _props:
+		if int(b["id"]) == id:
+			pos = b["pos"]
+	if not env.break_prop(id) or pos == Vector2.INF:
+		return
+	props_broken += 1
+	sfx("projectile_hit", pos)
+	match drop:
+		"gold":
+			Game.run_gold += 8
+			float_text(pos + Vector2(0, -70), "+8 gold", Color(1, 0.85, 0.35))
+			spark(pos + Vector2(0, -30), Color(1, 0.85, 0.35), 12)
+		"heal":
+			spark(pos + Vector2(0, -30), Color(1, 0.4, 0.45), 14)
+			for h in hero_nodes.values():
+				if is_instance_valid(h) and h.controlled and not h.downed and h.position.distance_to(pos) < 420.0:
+					h.heal(10.0)
+					float_text(h.position + Vector2(0, -120), "+10", Color(0.45, 1, 0.6))
+
+## A falling rock landed: each device hurts its own heroines; the host hurts foes and breaks urns.
+func _on_debris(pos: Vector2, radius: float, damage: float) -> void:
+	shake(5.0)
+	for h in hero_nodes.values():
+		if is_instance_valid(h) and h.controlled and not h.downed and _in_ellipse(h.position, pos, radius + 14.0):
+			h.take_hit(damage, pos, "trap")
+	if is_authority():
+		for e in enemy_nodes.values():
+			if is_instance_valid(e) and e.hp > 0 and not e.is_boss and _in_ellipse(e.position, pos, radius + e.radius):
+				e.take_damage(damage, false, pos, "")
+		_hit_props(pos, radius)
+
+## Floor hazards. Heroines: owner-side damage + slow. Foes: host-side damage (fliers hover over it).
+func _hazard_ticks(delta: float) -> void:
+	_haz_t -= delta
+	if _haz_t <= 0.0:
+		_haz_t = HAZARD_TICK
+		for h in hero_nodes.values():
+			if not (is_instance_valid(h) and h.controlled):
+				continue
+			if h.downed:
+				h.hazard_slow = 0.0
+				continue
+			var hz: Dictionary = env.hazard_at(h.position)
+			h.hazard_slow = float(hz["slow"])
+			if float(hz["dps"]) > 0.0 and h.state != "dash":
+				h.hazard_hurt(float(hz["dps"]) * HAZARD_TICK)
+	if not is_authority():
+		return
+	_ehaz_t -= delta
+	if _ehaz_t > 0.0:
+		return
+	_ehaz_t = 0.25
+	for e in enemy_nodes.values():
+		if not is_instance_valid(e) or e.hp <= 0 or e.is_boss or float(_kind_defs.get(e.kind, {}).get("hover", 0.0)) > 10.0:
+			continue
+		var hz: Dictionary = env.hazard_at(e.position)
+		if float(hz["dps"]) > 0.0 and e.has_method("_apply_damage"):
+			e.flash_hit()
+			e._apply_damage(float(hz["dps"]) * 0.25)
 
 func on_local_hero_hurt(_hero: Node, amount: float) -> void:
 	shake(10.0)
@@ -901,6 +1176,11 @@ func net_hero_action(key: String, action: String, pos: Vector2, dir: Vector2, se
 	var h = hero_nodes.get(key)
 	if not is_instance_valid(h):
 		return
+	# arrives between physics frames: enemies may have been freed since the cache was built
+	_ecache.clear()
+	for e in enemy_nodes.values():
+		if is_instance_valid(e):
+			_ecache.append(e)
 	_action_sound(h, action, pos)
 	_resolve_action(h, action, pos, dir, seq, aim, MODE_AUTH if is_authority() else MODE_VISUAL)
 
@@ -937,9 +1217,11 @@ func net_snapshot(list: Array) -> void:
 func net_event(kind: String, a: Array) -> void:
 	match kind:
 		"proj":
-			projectiles.append({"id": a[0], "pos": a[1], "vel": a[2], "dmg": a[3], "color": a[4], "r": a[5], "life": 5.0})
+			projectiles.append({"id": a[0], "pos": a[1], "vel": a[2], "dmg": a[3], "color": a[4], "r": a[5], "life": 5.0, "src": _src_near(a[1])})
 		"slam":
-			slams.append({"pos": a[0], "r": a[1], "t": 0.0, "delay": maxf(0.05, a[2]), "dmg": a[3], "color": a[4]})
+			slams.append({"pos": a[0], "r": a[1], "t": 0.0, "delay": maxf(0.05, a[2]), "dmg": a[3], "color": a[4], "src": _src_near(a[0])})
+		"break":
+			_net_break(int(a[0]), String(a[1]))
 		"hit":
 			# Host-confirmed hit. The attacker's own device already showed it.
 			var attacker = hero_nodes.get(a[3])
@@ -962,11 +1244,12 @@ func net_event(kind: String, a: Array) -> void:
 			_finish(false)
 
 func _on_kill(eid: int, killer: String, pos: Vector2, kind: String) -> void:
-	sfx("regent_die" if kind == "regent" else "enemy_die", pos)
+	var boss := _is_boss_kind(kind)
+	sfx("regent_die" if boss else "enemy_die", pos)
 	_enemy_states.erase(eid)
 	spark(pos + Vector2(0, -40), Color(0.85, 0.5, 1.0), 26)
-	shake(5.0 if kind != "regent" else 22.0)
-	Game.run_shards += 1 if kind != "regent" else 25
+	shake(22.0 if boss else 5.0)
+	Game.run_shards += 25 if boss else 1
 	var h = hero_nodes.get(killer)
 	if is_instance_valid(h) and h.controlled and h.stats["lifesteal"] > 0:
 		h.heal(h.stats["lifesteal"])
@@ -975,11 +1258,20 @@ func _on_kill(eid: int, killer: String, pos: Vector2, kind: String) -> void:
 	if is_instance_valid(e):
 		e.die_visual()
 	enemy_nodes.erase(eid)
-	if kind == "regent" and is_authority():
-		for other in enemies():
-			other.queue_free()
-		enemy_nodes.clear()
-		_broadcast("victory", [])
+	if boss and kind == boss_kind:
+		var spk := _boss_speaker(kind)
+		if not Game.run_bosses.has(spk):
+			Game.run_bosses.append(spk)
+		var last := StoryDB.boss_defeat(spk)
+		if last != "":
+			hud.subtitle("“%s”  — %s" % [last, _enemy_name(kind)], Color(0.95, 0.8, 1.0))
+		if is_authority():
+			# the boss's summons fall with it
+			for other in enemies():
+				other.queue_free()
+			enemy_nodes.clear()
+			if plan_room.get("final", false):
+				_broadcast("victory", [])
 
 func _on_room_clear() -> void:
 	if room_clear:
@@ -992,10 +1284,10 @@ func _on_room_clear() -> void:
 		if h.controlled:
 			h.revive(0.3)
 			local.append(h)
-	if room_index + 1 >= ROOMS.size():
+	if room_index + 1 >= Game.run_plan.size():
 		return
 	# Exits are known right away (deterministic), so the host can take a door while others still pick.
-	if bool(ROOMS[room_index + 1].get("boss", false)):
+	if Game.plan_room(room_index + 1)["type"] == "boss":
 		door_rewards = ["boss"]
 		door_points = [env.get_door_pos()]
 	else:
@@ -1005,6 +1297,11 @@ func _on_room_clear() -> void:
 			door_rewards.resize(door_points.size())
 	for k in range(door_points.size()):
 		door_points[k] = resolve_collision(door_points[k], 16.0)
+	var icons: Array = []
+	for r in door_rewards:
+		icons.append(_door_icon(String(r)))
+	if env.has_method("set_door_rewards"):
+		env.set_door_rewards(icons)
 	_grant_reward(room_reward, local)
 
 ## Grants this chamber's reward to this device's heroines, then opens the exits.
@@ -1066,28 +1363,47 @@ func _open_doors() -> void:
 		return
 	door_open = true
 	env.set_door_open(true)
-	if door_points.size() > 1 and _arch:
-		_arch.position = door_points[1] + Vector2(0, -6)
+	var gates: int = _gate_count()
+	if door_points.size() > gates and _arch:
+		# an exit the room didn't paint a gate for gets the veil arch
+		_arch.position = door_points[gates] + Vector2(0, -6)
 		_arch.visible = true
 		_arch.modulate = Color(1, 1, 1, 0)
 		var tw := _arch.create_tween()
 		tw.tween_property(_arch, "modulate:a", 1.0, 0.8)
-		spark(door_points[1] + Vector2(0, -120), Color(0.8, 0.55, 1.0), 26)
+		spark(door_points[gates] + Vector2(0, -120), Color(0.8, 0.55, 1.0), 26)
 	sfx("door_open")
 	hud.float_banner("Choose your path" if door_points.size() > 1 else "The way forward opens", Color(0.6, 0.9, 1.0))
+
+func _gate_count() -> int:
+	return env.get_gate_count() if env.has_method("get_gate_count") else 1
+
+func _door_icon(rid: String) -> Texture2D:
+	if rid == "boss":
+		var nxt := Game.plan_room(room_index + 1)
+		var spk := _boss_speaker(_boss_kind(int(nxt["chapter"])))
+		var face := _icon("face_" + spk)
+		return face if face else _icon("portrait_" + spk)
+	return _icon(String(Game.REWARDS.get(rid, {}).get("icon", "orb")))
 
 func _finish(victory: bool) -> void:
 	if run_over:
 		return
 	run_over = true
 	Engine.time_scale = 1.0
+	if not victory:
+		var all_down := true
+		for h in hero_nodes.values():
+			if is_instance_valid(h) and not h.downed:
+				all_down = false
+		Game.run_both_down = all_down
 	_music("victory" if victory else "defeat")
 	hud.float_banner("THE REGENT FALLS" if victory else "THE VEIL CLAIMS YOU", Color(1, 0.85, 0.3) if victory else Color(1, 0.3, 0.3))
 	await get_tree().create_timer(2.2).timeout
 	if not is_inside_tree():
 		return
 	if victory:
-		_play_dialogue("VICTORY", func(): run_finished.emit(true))
+		run_finished.emit(true) # the results screen plays the victory scene
 	else:
 		run_finished.emit(false)
 
@@ -1130,6 +1446,7 @@ func _physics_process(delta: float) -> void:
 			if is_instance_valid(h) and h.controlled and h.state == "run":
 				sfx("footstep", h.position)
 	_local_damage_checks(delta)
+	_hazard_ticks(delta)
 	_update_casts(delta)
 	_update_hshots(delta)
 	_update_fx(delta)
@@ -1159,7 +1476,7 @@ func _local_damage_checks(delta: float) -> void:
 			continue
 		for h in locals:
 			if h.position.distance_to(e.position) < e.hitbox_radius + 16.0:
-				h.take_hit(e.contact_damage, e.position)
+				h.take_hit(e.contact_damage, e.position, _killer_id(e.kind))
 	var i := projectiles.size() - 1
 	while i >= 0:
 		var p: Dictionary = projectiles[i]
@@ -1169,7 +1486,7 @@ func _local_damage_checks(delta: float) -> void:
 		if not dead:
 			for h in locals:
 				if h.position.distance_to(p["pos"]) < p["r"] + 18.0 and h.iframes <= 0.0 and h.state != "dash":
-					h.take_hit(p["dmg"], p["pos"])
+					h.take_hit(p["dmg"], p["pos"], String(p.get("src", "")))
 					spark(p["pos"], p["color"], 8)
 					sfx("projectile_hit", p["pos"])
 					dead = true
@@ -1185,8 +1502,8 @@ func _local_damage_checks(delta: float) -> void:
 		s["t"] += delta
 		if s["t"] >= s["delay"]:
 			for h in locals:
-				if h.position.distance_to(s["pos"]) < s["r"]:
-					h.take_hit(s["dmg"], s["pos"])
+				if _in_ellipse(h.position, s["pos"], s["r"]):
+					h.take_hit(s["dmg"], s["pos"], String(s.get("src", "")))
 			spark(s["pos"], s["color"], 16)
 			sfx("slam_impact", s["pos"])
 			shake(6.0)
@@ -1487,22 +1804,30 @@ func _draw_weapon_overlay() -> void:
 		overlay.draw_set_transform_matrix(Transform2D(spin, Vector2(1.0, 0.62 if k == "shield" else 0.7), 0.0, at))
 		overlay.draw_texture_rect(tex, Rect2(-sz * 0.5, -sz * 0.5, sz, sz), false)
 		overlay.draw_set_transform(Vector2.ZERO)
-	# exits: floating reward icons above each open door
+	# exits: painted gates float their own reward icon (env.set_door_rewards); the arch exit gets ours
 	if door_open and not door_points.is_empty():
 		var orb := _icon("orb")
 		var font := VTheme.font("caps")
+		var gates := _gate_count()
 		for k in range(door_points.size()):
 			var rid := String(door_rewards[k]) if k < door_rewards.size() else ""
 			var info: Dictionary = Game.REWARDS.get(rid, {})
-			var top: Vector2 = door_points[k] + Vector2(0, -105.0 if k == 0 else -190.0) + Vector2(0, sin(now * 2.2 + k) * 8.0)
-			if orb:
-				overlay.draw_texture_rect(orb, Rect2(top - Vector2(52, 52), Vector2(104, 104)), false)
-			var tex: Texture2D = _icon(String(info.get("icon", "face_regent"))) if rid != "boss" else _icon("face_regent")
-			if tex:
-				var s := 70.0 / maxf(tex.get_width(), tex.get_height())
-				var sz := Vector2(tex.get_width(), tex.get_height()) * s
-				overlay.draw_texture_rect(tex, Rect2(top - sz * 0.5, sz), false)
-			var label := String(info.get("name", "The Regent awaits" if rid == "boss" else "")).to_upper()
+			var bob := Vector2(0, sin(now * 2.2 + k) * 8.0)
+			var top: Vector2 = door_points[k] + Vector2(0, -190.0) + bob
+			if k >= gates:
+				if orb:
+					overlay.draw_texture_rect(orb, Rect2(top - Vector2(52, 52), Vector2(104, 104)), false)
+				var tex: Texture2D = _door_icon(rid)
+				if tex:
+					var sc := 70.0 / maxf(tex.get_width(), tex.get_height())
+					var sz := Vector2(tex.get_width(), tex.get_height()) * sc
+					overlay.draw_texture_rect(tex, Rect2(top - sz * 0.5, sz), false)
+			else:
+				top = door_points[k] + Vector2(0, -150.0)
+			var label := String(info.get("name", ""))
+			if rid == "boss":
+				label = _enemy_name(_boss_kind(int(Game.plan_room(room_index + 1)["chapter"])))
+			label = label.to_upper()
 			if font and label != "":
-				overlay.draw_string_outline(font, top + Vector2(-140, 78), label, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, 7, Color(0.03, 0.01, 0.04, 0.95))
-				overlay.draw_string(font, top + Vector2(-140, 78), label, HORIZONTAL_ALIGNMENT_CENTER, 280, 20, Color(info.get("color", Color(1, 0.85, 0.5)), 1.0).lightened(0.25))
+				overlay.draw_string_outline(font, top + Vector2(-160, 78), label, HORIZONTAL_ALIGNMENT_CENTER, 320, 20, 7, Color(0.03, 0.01, 0.04, 0.95))
+				overlay.draw_string(font, top + Vector2(-160, 78), label, HORIZONTAL_ALIGNMENT_CENTER, 320, 20, Color(info.get("color", Color(1, 0.85, 0.5)), 1.0).lightened(0.25))

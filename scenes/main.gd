@@ -5,6 +5,7 @@ extends Node
 const VTheme = preload("res://ui/theme.gd")
 const Settings = preload("res://ui/settings.gd")
 const StoryData = preload("res://data/story.gd")
+const StoryDB = preload("res://data/story_db.gd")
 const DialogueScript = preload("res://ui/dialogue.gd")
 const ARENA_PATH := "res://scenes/arena.gd"
 
@@ -1649,16 +1650,19 @@ func _show_results(victory: bool, earned: int) -> void:
 	var qv := VBoxContainer.new()
 	qv.add_theme_constant_override("separation", 0)
 	qrow.add_child(qv)
-	var quote := _label("“%s”" % (StoryData.VICTORY[3]["text"] if victory else StoryData.death_line()), "Quote", 22)
+	var quote_txt := StoryData.VICTORY[3]["text"] if victory else _death_narration()
+	var quote := _label("“%s”" % quote_txt, "Quote", 22)
 	quote.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	quote.custom_minimum_size = Vector2(540, 0)
 	quote.add_theme_color_override("font_color", StoryData.speaker("ysolde")["color"].lightened(0.25))
 	qv.add_child(quote)
-	var who := _label("— MATRON YSOLDE", "Caps", 14)
+	var who := _label("— MATRON YSOLDE" if victory else "— THE NARRATOR", "Caps", 14)
 	qv.add_child(who)
 	var btn := _button("Return to the Sanctum", func():
 		if victory:
-			play_dialogue(StoryData.VICTORY, show_sanctum)
+			var vl: Array = StoryDB.next_lines("victory", StoryDB.from_save(Game.data))
+			Game.save_slot()
+			play_dialogue(vl if not vl.is_empty() else StoryData.VICTORY, show_sanctum)
 		else:
 			show_sanctum(), "BigButton", 440, "confirm")
 	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -1674,6 +1678,19 @@ func _show_results(victory: bool, earned: int) -> void:
 	tt.tween_property(title, "scale", Vector2.ONE, 0.7).set_delay(0.15).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	tt.tween_property(title, "modulate:a", 1.0, 0.4).set_delay(0.15)
 	_focus_first(btn)
+
+
+## The narrator on the death screen (voice clip when one exists), in the killer's context.
+func _death_narration() -> String:
+	var coop := Game.players.size() > 1
+	var ctx := StoryDB.death_context(Game.run_killer, coop, coop and Game.run_both_down)
+	var audio := get_node_or_null("/root/Audio")
+	var t := ""
+	if audio and audio.has_method("voice"):
+		t = String(audio.voice("narrator", ctx))
+	if t == "":
+		t = StoryDB.narration(ctx)
+	return t if t != "" else StoryData.death_line()
 
 
 func _center(c: Control) -> Control:

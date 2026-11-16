@@ -38,6 +38,9 @@ var _boss: Node = null
 var _boss_trail := 1.0
 var _hp_trail: Array = []
 var _shard_label: Label
+var _gold_label: Label
+var _card: Control = null
+var _sub: Label = null
 var _ping_label: Label
 var _font: Font
 var _font_caps: Font
@@ -126,9 +129,17 @@ func build() -> void:
 	purse.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	purse.add_theme_constant_override("separation", 6)
 	purse.anchor_left = 1; purse.anchor_right = 1
-	purse.offset_left = -250; purse.offset_right = -96; purse.offset_top = 18; purse.offset_bottom = 58
+	purse.offset_left = -430; purse.offset_right = -96; purse.offset_top = 18; purse.offset_bottom = 58
 	purse.alignment = BoxContainer.ALIGNMENT_END
 	root.add_child(purse)
+	var gi := VTheme.image("reward_gold", Vector2(34, 34))
+	gi.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	purse.add_child(gi)
+	_gold_label = VTheme.title_label("0", 28, Color(1.0, 0.85, 0.35), 6)
+	purse.add_child(_gold_label)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(14, 0)
+	purse.add_child(gap)
 	purse.add_child(VTheme.shard_icon(32))
 	_shard_label = VTheme.title_label("0", 28, VTheme.GOLD_BRIGHT, 6)
 	purse.add_child(_shard_label)
@@ -280,6 +291,112 @@ func set_room_name(t: String) -> void:
 	tw.tween_property(room_plate, "modulate:a", 1.0, 0.3)
 
 
+## Chapter title card: big title, the narrator's line under it; fades by itself, never blocks input.
+func show_chapter_card(title: String, line := "") -> void:
+	if root == null:
+		return
+	if is_instance_valid(_card):
+		_card.queue_free()
+	var c := Control.new()
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(c)
+	_card = c
+	var band := ColorRect.new()
+	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	band.color = Color(0.02, 0.01, 0.03, 0.62)
+	band.anchor_right = 1.0
+	band.anchor_top = 0.5; band.anchor_bottom = 0.5
+	band.offset_top = -150; band.offset_bottom = 120
+	c.add_child(band)
+	var v := VBoxContainer.new()
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_theme_constant_override("separation", 2)
+	v.anchor_right = 1.0
+	v.anchor_top = 0.5; v.anchor_bottom = 0.5
+	v.offset_top = -150; v.offset_bottom = 120
+	c.add_child(v)
+	var parts := title.split(":", false, 1)
+	if parts.size() == 2:
+		var pre := VTheme.title_label(parts[0].strip_edges().to_upper(), 24, Color(0.85, 0.75, 0.95), 6, "caps")
+		pre.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(pre)
+	var t := VTheme.title_label(parts[parts.size() - 1].strip_edges(), 64, GOLD, 12, "display")
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(t)
+	var dv := VTheme.divider(520, 34)
+	dv.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(dv)
+	if line != "":
+		var q := VTheme.label("“%s”" % line, "Quote", 22)
+		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		q.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		q.custom_minimum_size = Vector2(minf(900.0, root.size.x - 80.0), 0)
+		q.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		v.add_child(q)
+	c.modulate.a = 0.0
+	var tw := c.create_tween()
+	tw.tween_property(c, "modulate:a", 1.0, 0.6)
+	tw.tween_interval(3.4)
+	tw.tween_property(c, "modulate:a", 0.0, 0.9)
+	tw.tween_callback(c.queue_free)
+
+
+## A spoken line at the bottom of the screen (boss taunts, last words).
+func subtitle(text: String, color := Color(0.95, 0.85, 1.0)) -> void:
+	if root == null or text == "":
+		return
+	if is_instance_valid(_sub):
+		_sub.queue_free()
+	var l := VTheme.label(text, "Quote", 24, color)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.anchor_left = 0.5; l.anchor_right = 0.5; l.anchor_top = 1.0; l.anchor_bottom = 1.0
+	l.offset_left = -460; l.offset_right = 460; l.offset_top = -250; l.offset_bottom = -170
+	l.add_theme_color_override("font_outline_color", INK)
+	l.add_theme_constant_override("outline_size", 8)
+	root.add_child(l)
+	_sub = l
+	var tw := l.create_tween()
+	l.modulate.a = 0.0
+	tw.tween_property(l, "modulate:a", 1.0, 0.25)
+	tw.tween_interval(3.2)
+	tw.tween_property(l, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(l.queue_free)
+
+
+## A patron's line for the boon card, in context (Audio.voice also plays a clip when one exists).
+func _patron_quote(patron_id: String) -> String:
+	var ctx := "greet"
+	var sdb = load("res://data/story_db.gd")
+	var p: Dictionary = sdb.from_save(Game.data)
+	if not sdb.has_flag(p, "warden_met_" + patron_id):
+		ctx = "first_meeting"
+		sdb.set_flag(p, "warden_met_" + patron_id)
+	elif arena and arena.plan_room.get("type", "") == "boss":
+		ctx = "boss_floor"
+	elif _any_low():
+		ctx = "low_health"
+	elif Net.online or local_heroes.size() > 1:
+		ctx = "coop"
+	var audio := get_node_or_null("/root/Audio")
+	var t := ""
+	if audio and audio.has_method("voice"):
+		t = String(audio.voice(patron_id, ctx))
+	if t == "":
+		t = str(StoryData.warden_line(patron_id))
+	return t
+
+
+func _any_low() -> bool:
+	for h in local_heroes:
+		if is_instance_valid(h) and h.hp < h.max_hp * 0.35:
+			return true
+	return false
+
+
 func float_banner(text: String, color: Color) -> void:
 	if banner == null:
 		return
@@ -325,7 +442,7 @@ func _process(delta: float) -> void:
 		_boss = null
 		if arena and Engine.get_process_frames() % 15 == 0:
 			for e in arena.enemies():
-				if e.kind == "regent":
+				if e.get("is_boss"):
 					_boss = e
 					_boss_trail = 1.0
 					_on_boss_appear()
@@ -340,9 +457,11 @@ func _process(delta: float) -> void:
 		sig = sig * 31 + int(_boss_trail * 500.0)
 	var sh := Game.run_shards
 	sig = sig * 31 + sh
+	sig = sig * 31 + Game.run_gold
 	if sig != _sig:
 		_sig = sig
 		_shard_label.text = str(sh)
+		_gold_label.text = str(Game.run_gold)
 		drawer.queue_redraw()
 	if Net.online and Engine.get_process_frames() % 30 == 0:
 		_ping_label.text = "Hosting" if Net.is_host() else "Ping %d ms" % Net.ping_ms
@@ -457,7 +576,7 @@ func _draw_bars() -> void:
 		drawer.draw_rect(Rect2(ix2 + iw2 * 0.5 - 1, iy2, 2, ih2), Color(1, 0.85, 0.5, 0.8))
 		if _tex_boss:
 			drawer.draw_texture_rect(_tex_boss, Rect2(bx2, by2, bw, bh), false)
-		_text_c(Vector2(bx2, by2 + bh + 16), bw, "THE HOLLOW REGENT", 20, Color(0.92, 0.8, 1.0), _font_caps)
+		_text_c(Vector2(bx2, by2 + bh + 16), bw, (_boss.display_name() if _boss.has_method("display_name") else "The Hollow Regent").to_upper(), 20, Color(0.92, 0.8, 1.0), _font_caps)
 
 
 func _text_c(pos: Vector2, width: float, text: String, size: int, col: Color, f: Font = null) -> void:
@@ -537,7 +656,7 @@ func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 	head.position = Vector2(0, 16)
 	head.size = Vector2(vs.x, 40)
 	ov.add_child(head)
-	var line_txt := str(StoryData.warden_line(patron_id)) if not forge else "Steel remembers every hand that shaped it. Choose what it becomes."
+	var line_txt := _patron_quote(patron_id) if not forge else "Steel remembers every hand that shaped it. Choose what it becomes."
 	var line := VTheme.label("“%s”" % line_txt, "Quote", 21)
 	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

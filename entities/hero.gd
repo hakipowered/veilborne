@@ -5,7 +5,7 @@ extends Node2D
 const OUTLINE := Color(0.06, 0.03, 0.06)
 const STATES := ["idle", "run", "attack", "dash", "special", "hurt", "downed", "draw"]
 const AIM_RANGE := 420.0 ## max distance of the aimed special's landing point
-const DRAW_TIME := 0.6   ## bow: seconds to a full draw
+const DRAW_TIME := 0.5   ## bow: seconds to a full draw
 
 var key := ""
 var hero_id := "kaela"
@@ -33,6 +33,8 @@ var special_cd_max := 2.6
 var dash_charges := 1
 var dash_recharge := 0.0
 var iframes := 0.0
+var hazard_slow := 0.0 ## 0..1 move speed removed by the floor (set by the arena)
+var last_hit_by := "" ## killer tracking for the story
 var flash := 0.0
 var downed := false
 var revive_progress := 0.0
@@ -296,6 +298,7 @@ func _simulate(delta: float) -> void:
 	var speed: float = def["speed"] * (1.0 + stats["speed_mult"] / 100.0) * stats["speed_meta"]
 	if aiming:
 		speed *= 0.8
+	speed *= 1.0 - hazard_slow
 	if mv.length() > 0.1 and state in ["idle", "run"]:
 		facing = mv.normalized()
 
@@ -480,9 +483,11 @@ func _act(action: String, pos: Vector2, dir: Vector2, aim := Vector2.ZERO) -> vo
 	if Net.online:
 		Net.hero_action.rpc(key, action, pos, dir, seq, aim)
 
-func take_hit(amount: float, from: Vector2) -> void:
+func take_hit(amount: float, from: Vector2, src := "") -> void:
 	if not controlled or downed or iframes > 0.0 or state == "dash":
 		return
+	if src != "":
+		last_hit_by = src
 	amount *= 1.0 - stats["armor"] / 100.0
 	hp -= amount
 	iframes = 0.6
@@ -490,6 +495,18 @@ func take_hit(amount: float, from: Vector2) -> void:
 	vel = (position - from).normalized() * 380.0
 	_set_state("hurt")
 	arena.on_local_hero_hurt(self, amount)
+	_check_down()
+
+## Floor hazards (lava, spikes...): steady damage, no stagger, no iframes. Owner-side.
+func hazard_hurt(amount: float) -> void:
+	if not controlled or downed or state == "dash" or amount <= 0.0:
+		return
+	last_hit_by = "trap"
+	hp -= amount * (1.0 - stats["armor"] / 100.0)
+	flash = maxf(flash, 0.45)
+	_check_down()
+
+func _check_down() -> void:
 	if hp <= 0.0:
 		if defiance_left > 0:
 			defiance_left -= 1
@@ -500,6 +517,8 @@ func take_hit(amount: float, from: Vector2) -> void:
 			hp = 0.0
 			downed = true
 			revive_progress = 0.0
+			if arena.has_method("on_hero_downed"):
+				arena.on_hero_downed(self)
 
 func heal(amount: float) -> void:
 	if downed or not controlled:
@@ -570,7 +589,8 @@ func _interpolate() -> void:
 # ---------------------------------------------------------------- drawing
 
 const SPRITE_HEIGHT := 160.0
-const ONE_SHOTS := ["attack1", "attack2", "attack3", "special", "hurt"]
+const ONE_SHOTS := ["attack1", "attack2", "attack3", "special", "hurt", "run_stop"]
+var _run_speed := 0.0
 var body: AnimSprite
 var fx: Node2D
 var _last_state := ""
@@ -600,6 +620,7 @@ func _on_anim_event(ev: String) -> void:
 ## to feel snappy, and their recovery frames keep playing while the heroine stands still.
 func _drive_anim() -> void:
 	var entered := state != _last_state or state_t + 0.0001 < _last_state_t or (state == "attack" and combo != _last_combo)
+	var prev_state := _last_state
 	_last_state = state
 	_last_state_t = state_t
 	_last_combo = combo
@@ -642,8 +663,14 @@ func _drive_anim() -> void:
 				body.play_timed("hurt", 0.26)
 		"run":
 			body.play("run")
-			body.set_speed_scale(clampf(vel.length() / maxf(1.0, float(def["speed"])), 0.6, 1.3))
+			_run_speed = Vector2(vel.x, vel.y / 0.64).length() / maxf(1.0, float(def["speed"]))
+			body.set_speed_scale(clampf(_run_speed, 0.6, 1.6))
 		_:
+			if entered and state == "idle" and prev_state == "run" and _run_speed > 0.7:
+				_run_speed = 0.0
+				body.set_speed_scale(1.0)
+				body.play_timed("run_stop", 0.3)
+				return
 			if body.current in ONE_SHOTS and not body.is_playing_done():
 				return # let the swing's follow-through finish
 			body.set_speed_scale(1.0)

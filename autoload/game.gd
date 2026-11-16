@@ -12,7 +12,7 @@ const HEROES := {
 		"speed": 265.0, "hp": 100, "attack": 14, "special": 30,
 	},
 	"liora": {
-		"name": "Liora Moonbrand", "title": "the Moonlit Blade", "weapon": "twin",
+		"name": "Liora Ashveil", "title": "the Moonlit Blade", "weapon": "twin",
 		"outfit": Color(0.22, 0.24, 0.62), "trim": Color(0.75, 0.88, 1.0),
 		"hair": Color(0.88, 0.9, 1.0), "skin": Color(0.62, 0.43, 0.32),
 		"speed": 290.0, "hp": 85, "attack": 9, "special": 24,
@@ -76,8 +76,8 @@ const WEAPONS := {
 	"bow": {
 		"name": "Starwhisper Bow", "kind": "Bow", "icon": "weapon_bow", "color": Color(1.0, 0.9, 0.55),
 		"desc": "Tap to loose an arrow, hold to draw a piercing charged shot. The special rains a volley on the aimed point.",
-		"attack": 11.0, "special": 14.0, "cd": 0.26, "reach": 0.0, "arc": 0.0, "lunge": 0.0,
-		"special_cd": 2.8, "special_time": 0.5, "special_hit": 0.33, "special_name": "Starfall Volley",
+		"attack": 20.0, "special": 22.0, "cd": 0.25, "reach": 0.0, "arc": 0.0, "lunge": 0.0,
+		"special_cd": 2.4, "special_time": 0.5, "special_hit": 0.33, "special_name": "Starfall Volley",
 		"swing": "swing_blades", "cast": "special_moon",
 		"aspects": [
 			{"name": "Aspect of the Huntress", "desc": "Steady draw, steady aim. No twist.", "cost": 0, "mods": {}},
@@ -88,7 +88,7 @@ const WEAPONS := {
 	"shield": {
 		"name": "Aegis of Dawn", "kind": "Shield", "icon": "weapon_shield", "color": Color(1.0, 0.8, 0.4),
 		"desc": "Heavy bashes; the third strike is a charging rush. The special throws the shield at the aimed point.",
-		"attack": 13.0, "special": 26.0, "cd": 0.36, "reach": 100.0, "arc": 60.0, "lunge": 180.0,
+		"attack": 15.0, "special": 28.0, "cd": 0.33, "reach": 105.0, "arc": 60.0, "lunge": 180.0,
 		"special_cd": 2.6, "special_time": 0.48, "special_hit": 0.3, "special_name": "Aegis Throw",
 		"swing": "swing_spear", "cast": "special_ember",
 		"aspects": [
@@ -172,6 +172,16 @@ var run_gold := 0 ## run currency for a future shop
 ## Weapon + aspect chosen before a run ("" = the heroine's default weapon).
 var run_weapon := ""
 var run_aspect := 0
+## Chapters: the run plan (see build_run_plan), where we are, and what the story needs at the end.
+const CHAPTER_FLOORS := ["catacomb", "garden", "forge", "hollow"]
+const CHAPTER_BOSS_FLOORS := ["throne", "garden_boss", "forge_boss", "hollow_boss"]
+const CHAPTER_NAMES := ["The Gilded Catacombs", "The Drowned Garden", "The Ember Forge", "The Hollow Throne"]
+var run_plan: Array = [] ## [{floor, chapter (1..4), type: combat|elite|boss, n (1-based in chapter), count, final}]
+var run_chapter := 1
+var run_killer := "" ## enemy kind, boss speaker id or "trap" (StoryDB.record_run)
+var run_bosses: Array = [] ## boss speaker ids beaten this run
+var run_both_down := false
+var chapter_rooms_override := 0 ## tests: combat rooms per chapter (0 = 6..8 from the seed)
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
@@ -247,13 +257,40 @@ func start_run(seed_value: int) -> void:
 	run_seed = seed_value
 	run_shards = 0
 	run_gold = 0
+	run_chapter = 1
+	run_killer = ""
+	run_bosses = []
+	run_both_down = false
+	run_plan = build_run_plan(seed_value)
 	hero_runtime.clear()
 	data["runs"] += 1
 	save_slot()
 
+## Four chapters, each 6..8 chambers (the middle one holds an elite) and a boss hall. Same on every device.
+func build_run_plan(seed_value: int) -> Array:
+	var plan: Array = []
+	for ci in range(4):
+		var n := chapter_rooms_override
+		if n <= 0:
+			n = 6 + posmod(hash("chapter:%d:%d" % [seed_value, ci]), 3)
+		var elite_at := n / 2
+		for i in range(n):
+			plan.append({"floor": CHAPTER_FLOORS[ci], "chapter": ci + 1, "type": "elite" if i == elite_at else "combat",
+				"n": i + 1, "count": n + 1, "final": false})
+		plan.append({"floor": CHAPTER_BOSS_FLOORS[ci], "chapter": ci + 1, "type": "boss", "n": n + 1, "count": n + 1, "final": ci == 3})
+	return plan
+
+func plan_room(idx: int) -> Dictionary:
+	if run_plan.is_empty():
+		run_plan = build_run_plan(run_seed)
+	return run_plan[clampi(idx, 0, run_plan.size() - 1)]
+
 func end_run(victory: bool) -> int:
 	var mult := 1.0 + 0.2 * meta_rank("fortune")
 	var earned := int(round((run_shards + run_room * 4 + (40 if victory else 0)) * mult))
+	var sdb = load("res://data/story_db.gd")
+	if sdb:
+		sdb.record_run(sdb.from_save(data), victory, run_killer, run_chapter, run_bosses)
 	data["shards"] += earned
 	data["best_room"] = max(int(data["best_room"]), run_room)
 	if victory:
