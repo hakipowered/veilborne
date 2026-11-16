@@ -19,8 +19,20 @@ const SFX_NAMES: PackedStringArray = [
 	"regent_die", "boon_pickup", "door_open", "room_clear", "shard_pickup", "footstep",
 ]
 const UI_NAMES: PackedStringArray = ["click", "hover", "confirm", "back", "boon", "purchase", "open"]
-const MUSIC_TRACKS: PackedStringArray = ["title", "sanctum", "catacombs", "boss", "victory", "defeat"]
-const LOOPING_TRACKS: PackedStringArray = ["title", "sanctum", "catacombs", "boss"]
+## Music files in res://audio/music/<name>.ogg. Chapter tracks: catacombs (1), garden (2), forge (3), throne (4).
+const MUSIC_FILES: PackedStringArray = [
+	"title", "home", "catacombs", "garden", "forge", "throne", "boss_general", "boss_regent",
+	"victory", "defeat",
+]
+## Legacy track names kept working: they play the file they map to.
+const MUSIC_ALIASES := {"sanctum": "home", "boss": "boss_regent"}
+## Every accepted track name (files + aliases).
+const MUSIC_TRACKS: PackedStringArray = [
+	"title", "home", "catacombs", "garden", "forge", "throne", "boss_general", "boss_regent",
+	"victory", "defeat", "sanctum", "boss",
+]
+## Stings play once; everything else loops seamlessly.
+const ONE_SHOT_TRACKS: PackedStringArray = ["victory", "defeat"]
 
 ## Per-sound tuning: [base volume dB, priority (higher survives stealing), cooldown ms, max simultaneous]
 const TUNING := {
@@ -131,7 +143,9 @@ func ui(name: String) -> void:
 
 ## Switch music with a crossfade. "" (or unknown) stops music with a fade-out. Same track = no-op.
 func music(track: String, fade := 1.0) -> void:
-	if track == _mus_track and _mus.size() == 2 and _mus[_mus_active].playing:
+	if track != "" and _mus_track != "" and _mus.size() == 2 and _mus[_mus_active].playing \
+			and _music_file(track) == _music_file(_mus_track):
+		_mus_track = track  # e.g. "sanctum" -> "home": same file keeps playing, no restart
 		return
 	var stream: AudioStream = null
 	if track != "":
@@ -281,21 +295,28 @@ func _load_stream(base: String) -> AudioStream:
 	return null
 
 
+## Resolves a track name (or legacy alias) to its file name; "" when unknown.
+func _music_file(track: String) -> String:
+	var f: String = MUSIC_ALIASES.get(track, track)
+	return f if MUSIC_FILES.has(f) else ""
+
+
 func _get_music(track: String) -> AudioStream:
-	if _music_streams.has(track):
-		return _music_streams[track]
-	var s: AudioStream = null
-	if MUSIC_TRACKS.has(track):
-		s = _load_stream(MUSIC_DIR + track)
-	else:
+	var file := _music_file(track)
+	if file == "":
 		_warn_once("track:" + track, "Audio: unknown music track '%s'" % track)
+		return null
+	if _music_streams.has(file):
+		return _music_streams[file]
+	var s: AudioStream = _load_stream(MUSIC_DIR + file)
 	if s != null:
-		var lp := LOOPING_TRACKS.has(track)
+		var lp := not ONE_SHOT_TRACKS.has(file)
 		if s is AudioStreamOggVorbis:
 			(s as AudioStreamOggVorbis).loop = lp
+			(s as AudioStreamOggVorbis).loop_offset = 0.0
 		elif s is AudioStreamMP3:
 			(s as AudioStreamMP3).loop = lp
-	_music_streams[track] = s
+	_music_streams[file] = s
 	return s
 
 
@@ -459,3 +480,4 @@ func _exit_tree() -> void:
 	for m in _mus:
 		m.stop()
 		m.stream = null
+	_music_streams.clear()
