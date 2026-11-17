@@ -2,8 +2,8 @@ extends CanvasLayer
 ## Checks the repo's downloads branch for a newer build on launch and offers a one-tap update.
 ## The URLs never change, so one link always installs the newest version.
 
-const VERSION_CODE := 11
-const VERSION_NAME := "0.6.1"
+const VERSION_CODE := 12
+const VERSION_NAME := "0.6.2"
 const REPO := "hakipowered/veilborne"
 ## Cloudflare Worker that serves the newest build (no size limit; see tools/cloudflare/worker.js).
 const DL := "https://veilborne-download.hakipowered.workers.dev"
@@ -26,10 +26,15 @@ func _ready() -> void:
 	ver.text = "v" + VERSION_NAME
 	ver.add_theme_font_size_override("font_size", 14)
 	ver.add_theme_color_override("font_color", Color(1, 1, 1, 0.45))
-	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	ver.position += Vector2(8, -24)
 	ver.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(ver)
+	# Kept inside the phone's safe area (clear of rounded corners and cut-outs).
+	var safe := Control.new()
+	safe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	preload("res://ui/theme.gd").fit_safe(safe)
+	add_child(safe)
+	safe.add_child(ver)
+	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	ver.position += Vector2(10, -26)
 	if OS.has_feature("editor") or DisplayServer.get_name() == "headless":
 		return
 	_http = HTTPRequest.new()
