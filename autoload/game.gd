@@ -94,7 +94,7 @@ const WEAPONS := {
 		"aspects": [
 			{"name": "Aspect of the Bulwark", "desc": "Thrown shield ricochets between foes and returns. You take 10% less damage.", "cost": 0, "mods": {"armor": 10}},
 			{"name": "Aspect of Rebound", "desc": "The thrown shield ricochets to 2 more foes.", "cost": 40, "mods": {"w_ricochet": 2}},
-			{"name": "Aspect of the Bastion", "desc": "The thrown shield lodges at the aimed point, spinning for 2.5 s and grinding all around it, then returns.", "cost": 80, "mods": {"w_anchor": 2.5}},
+			{"name": "Aspect of the Bastion", "desc": "The thrown shield lodges at the aimed point, spinning for 4 s and grinding all around it, then returns.", "cost": 80, "mods": {"w_anchor": 4.0}},
 		],
 	},
 	"scythe": {
@@ -127,7 +127,7 @@ const FORGE := [
 	{"id": "bow_draw", "weapon": "bow", "name": "Quick Draw", "desc": "Draw %d%% faster.", "stat": "w_charge", "values": [25, 40, 60]},
 	{"id": "bow_rain", "weapon": "bow", "name": "Endless Rain", "desc": "The volley lands %d more waves.", "stat": "w_pulses", "values": [1, 2, 3]},
 	{"id": "shield_rebound", "weapon": "shield", "name": "Rebound Rim", "desc": "The thrown shield ricochets to %d more foes.", "stat": "w_ricochet", "values": [1, 2, 3]},
-	{"id": "shield_anchor", "weapon": "shield", "name": "Anchored Aegis", "desc": "The thrown shield lodges at the aimed point and spins there for %.1f s.", "stat": "w_anchor", "values": [1.5, 2.0, 2.5]},
+	{"id": "shield_anchor", "weapon": "shield", "name": "Anchored Aegis", "desc": "The thrown shield lodges at the aimed point and spins there for %.1f s.", "stat": "w_anchor", "values": [2.5, 3.5, 4.5]},
 	{"id": "shield_rush", "weapon": "shield", "name": "Vanguard Rush", "desc": "The rushing third strike deals +%d%% damage and goes farther.", "stat": "w_rush", "values": [40, 70, 100]},
 	{"id": "shield_guard", "weapon": "shield", "name": "Sunlit Guard", "desc": "Take %d%% less damage.", "stat": "armor", "values": [6, 10, 15]},
 	{"id": "scythe_chain", "weapon": "scythe", "name": "Longer Chain", "desc": "Sweeps reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40]},
