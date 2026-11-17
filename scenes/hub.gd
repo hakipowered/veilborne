@@ -10,6 +10,8 @@ signal start_requested
 signal leave_requested
 
 const ManorScript := preload("res://scenes/manor.gd")
+const GLOW_SHADER := preload("res://shaders/manor_glow_rim.gdshader")
+const PORTAL_SHADER := preload("res://shaders/manor_portal.gdshader")
 const DummyScript := preload("res://entities/dummy.gd")
 const StoryData := preload("res://data/story.gd")
 const NPC_H := 196.0
@@ -59,6 +61,7 @@ var _area := ""
 var _marks := {} ## npc id -> Label "!"
 var _npc_nodes := {} ## npc id -> Node2D
 var _rack_icons := {} ## weapon id -> Sprite2D
+var _rack_fx := {} ## weapon id -> {rack, halo, pool, mats, near}
 var _t := 0.0
 var _catcher: Node
 
@@ -217,7 +220,7 @@ func _build_stations() -> void:
 	for i in range(Game.WEAPON_ORDER.size()):
 		var wid: String = Game.WEAPON_ORDER[i]
 		var gp := Vector2(us[i], -1430)
-		manor.prop(ManorScript.ENV + "forge/rack.png", gp, 180.0, 50.0, "", i % 2 == 1)
+		var rack: Node2D = manor.prop(ManorScript.ENV + "forge/rack.png", gp, 180.0, 50.0, "", i % 2 == 1)
 		var icon := Sprite2D.new()
 		icon.texture = VTheme.tex(String(Game.WEAPONS[wid]["icon"]))
 		icon.position = ManorScript.w(gp.x, gp.y) + Vector2(0, -230)
@@ -225,7 +228,9 @@ func _build_stations() -> void:
 		icon.z_index = 4
 		add_child(icon)
 		_rack_icons[wid] = icon
+		_rack_life(wid, rack, icon, ManorScript.w(gp.x, gp.y))
 		_station("rack_" + wid, "rack", gp + Vector2(70, 70), 130.0, String(Game.WEAPONS[wid]["name"]), ["armory"], {"weapon": wid})
+	manor._add_light(ManorScript.w(125, -1430) + Vector2(0, -120), Color(1.0, 0.8, 0.5), 560.0, 0.55, 0.12)
 	# training dummies
 	var spots := [Vector2(140, -820), Vector2(330, -930), Vector2(170, -1120)]
 	for i in range(spots.size()):
@@ -240,10 +245,71 @@ func _build_stations() -> void:
 	manor._add_light(ManorScript.w(-1220, -760) + Vector2(0, -60), Color(0.45, 0.75, 1.0), 460.0, 0.9, 0.15)
 	_station("altar", "altar", Vector2(-1130, -680), 170.0, "The Vow Ledger", ["vows"])
 	# the gate down into the Hollow
-	manor.prop("res://art/fx/veil_arch.webp", Vector2(-1400, -1400), 400.0, 70.0)
+	var arch: Node2D = manor.prop("res://art/fx/veil_arch.webp", Vector2(-1400, -1400), 400.0, 70.0)
+	var pm := ShaderMaterial.new()
+	pm.shader = PORTAL_SHADER
+	pm.set_shader_parameter("mask_tex", load(ManorScript.M + "gate_mask.png"))
+	pm.set_shader_parameter("noise_tex", load(ManorScript.ENV + "noise.png"))
+	(arch.get_node("Art") as CanvasItem).material = pm
 	manor._add_light(ManorScript.w(-1400, -1400) + Vector2(0, -120), Color(0.7, 0.45, 1.0), 560.0, 1.1, 0.2)
 	_station("gate", "gate", Vector2(-1270, -1270), 170.0, "The Gate to the Hollow", ["descend"])
 	_equip(Game.weapon_for(hero_id), Game.run_aspect)
+
+
+## Life for a weapon rack: a pulsing rim glow on the rack and its floating weapon, a halo behind the
+## weapon, a pool of its color on the floor and a few sparks drifting up. Driven in _process.
+func _rack_life(wid: String, rack: Node2D, icon: Sprite2D, at: Vector2) -> void:
+	var col: Color = Game.WEAPONS[wid].get("color", Color(1.0, 0.8, 0.45))
+	var mats: Array = []
+	for n in [rack.get_node("Art"), icon]:
+		var m := ShaderMaterial.new()
+		m.shader = GLOW_SHADER
+		m.set_shader_parameter("glow_color", col)
+		m.set_shader_parameter("width_px", 16.0 if n == icon else 9.0)
+		m.set_shader_parameter("sheen", 1.0 if n == icon else 0.0)
+		(n as CanvasItem).material = m
+		mats.append(m)
+	var pool := Sprite2D.new()
+	pool.texture = manor._glow
+	pool.position = at + Vector2(0, -6)
+	pool.scale = Vector2(2.3, 0.95)
+	pool.modulate = Color(col, 0.2)
+	pool.material = manor._additive()
+	pool.z_index = -40
+	add_child(pool)
+	var halo := Sprite2D.new()
+	halo.texture = manor._glow
+	halo.position = icon.position
+	halo.scale = Vector2(1.25, 1.25)
+	halo.modulate = Color(col, 0.25)
+	halo.material = manor._additive()
+	halo.z_index = 3
+	add_child(halo)
+	var sp := CPUParticles2D.new()
+	sp.position = at + Vector2(0, -110)
+	sp.amount = 8
+	sp.lifetime = 2.2
+	sp.preprocess = 2.2
+	sp.texture = manor._dot
+	sp.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	sp.emission_rect_extents = Vector2(55, 70)
+	sp.direction = Vector2(0, -1)
+	sp.spread = 30.0
+	sp.gravity = Vector2(0, -12)
+	sp.initial_velocity_min = 8.0
+	sp.initial_velocity_max = 26.0
+	sp.scale_amount_min = 0.16
+	sp.scale_amount_max = 0.36
+	sp.color = col.lightened(0.3)
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0))
+	ramp.add_point(0.25, Color(1, 1, 1, 1))
+	ramp.set_color(ramp.get_point_count() - 1, Color(1, 1, 1, 0))
+	sp.color_ramp = ramp
+	sp.material = manor._additive()
+	sp.z_index = 5
+	add_child(sp)
+	_rack_fx[wid] = {"mats": mats, "halo": halo, "pool": pool, "sparks": sp, "near": 0.0, "ph": randf() * TAU}
 
 
 func _npc(id: String, gpos: Vector2, actions: Array, flip: bool) -> void:
@@ -305,9 +371,29 @@ func _process(delta: float) -> void:
 		var m: Label = _marks[id]
 		m.position.y = -NPC_H - 50 + sin(t * 4.0 + i) * 6.0
 		i += 1
+	var near_w := String(_near.get("weapon", ""))
+	var eq := Game.weapon_for(hero_id)
 	for wid in _rack_icons.keys():
 		var s: Sprite2D = _rack_icons[wid]
-		s.offset.y = sin(t * 2.0 + wid.length()) * 10.0
+		var fx: Dictionary = _rack_fx[wid]
+		var ph: float = fx["ph"]
+		var nr := move_toward(float(fx["near"]), 1.0 if wid == near_w else 0.0, delta * 3.0)
+		fx["near"] = nr
+		s.offset.y = sin(t * 1.6 + ph) * 16.0 - nr * 14.0
+		s.rotation = sin(t * 0.9 + ph) * 0.07
+		var k := 1.0 + 0.1 * nr
+		s.scale = Vector2(0.42, 0.42) * k
+		var pulse := 0.5 + 0.5 * sin(t * 2.2 + ph)
+		var gl := 0.55 + 0.4 * pulse + 1.0 * nr + (0.25 if wid == eq else 0.0)
+		for m in fx["mats"]:
+			(m as ShaderMaterial).set_shader_parameter("glow", gl)
+		var halo: Sprite2D = fx["halo"]
+		halo.position = s.position + Vector2(0, s.offset.y * s.scale.y)
+		halo.modulate.a = 0.5 + 0.22 * pulse + 0.35 * nr
+		halo.scale = Vector2.ONE * (1.5 + 0.18 * pulse + 0.5 * nr)
+		var pool: Sprite2D = fx["pool"]
+		pool.modulate.a = 0.3 + 0.15 * pulse + 0.45 * nr
+		(fx["sparks"] as CPUParticles2D).speed_scale = 1.0 + nr * 1.5
 	if Engine.get_process_frames() % 30 == 0:
 		_refresh_marks()
 

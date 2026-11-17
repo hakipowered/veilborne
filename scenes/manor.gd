@@ -300,6 +300,43 @@ func prop(path: String, at: Vector2, height: float, block := 0.0, decor := "", f
 	return holder
 
 
+## A painted piece standing flush against the kitchen's back wall (the wall at u = wall_u, running along v),
+## painted in 3/4 iso with its front facing +u. back_px: texture pixel of its back-left floor corner (where
+## it meets the wall); d_px / w_px: on-screen depth and width of its footprint in texture pixels. It is
+## y-sorted by its footprint center and blocks the whole footprint. Returns the holder (Art inside).
+func wall_prop(path: String, wall_u: float, center_v: float, height: float, back_px: Vector2, d_px: float, w_px: float) -> Node2D:
+	var tex := _tex(path)
+	var sc := height / tex.get_height()
+	var depth := d_px * sc
+	var width := w_px * sc
+	var holder := Node2D.new()
+	holder.position = w(wall_u + depth * 0.5, center_v)
+	var sh := Sprite2D.new()
+	sh.texture = _shadow
+	sh.scale = Vector2(width / 64.0, width / 64.0 * 0.45)
+	sh.rotation = -0.46
+	sh.modulate.a = 0.6
+	holder.add_child(sh)
+	var s := Sprite2D.new()
+	s.name = "Art"
+	s.texture = tex
+	s.centered = false
+	s.scale = Vector2(sc, sc)
+	s.position = w(wall_u, center_v + width * 0.5) - holder.position
+	s.offset = -back_px
+	holder.add_child(s)
+	_ysorted.append(holder)
+	_parent.add_child(holder)
+	_segments.append([Vector2(wall_u + depth * 0.5, center_v - width * 0.5), Vector2(wall_u + depth * 0.5, center_v + width * 0.5), depth * 0.5])
+	return holder
+
+
+## World position of a texture pixel of a wall_prop's art (to hang fire glow / embers on it).
+func art_point(holder: Node2D, px: Vector2) -> Vector2:
+	var s: Sprite2D = holder.get_node("Art")
+	return holder.position + s.position + (px + s.offset) * s.scale
+
+
 ## A flat painted decal on the floor (rugs). Square textures map onto the iso diamond of ground size.
 func decal(path: String, at: Vector2, size: Vector2, decor := "", rot := 0.0) -> Node2D:
 	var tex := _tex(path)
@@ -540,11 +577,13 @@ func _build_hall() -> void:
 
 
 func _build_kitchen() -> void:
-	prop(M + "fireplace.png", Vector2(-1440, -20), 400.0, 110.0)
-	_add_light(w(-1440, -20) + Vector2(0, -60), Color(1.0, 0.52, 0.2), 900.0, 1.5, 0.35)
-	_fire_glow(w(-1440, -20) + Vector2(-20, -140), Color(1.0, 0.5, 0.15), 1.6)
-	_embers(w(-1440, -20) + Vector2(-20, -150), 70.0, 14)
-	prop(M + "shelf.png", Vector2(-1420, 360), 250.0, 70.0)
+	# the hearth and the cupboard are painted in 3/4 iso, backs flush against the kitchen wall
+	var fp := wall_prop(M + "fireplace.png", -1496.0, -20.0, 560.0, Vector2(0, 539), 98.0, 238.0)
+	var fire := art_point(fp, Vector2(212, 480))
+	_add_light(fire + Vector2(0, 40), Color(1.0, 0.52, 0.2), 900.0, 1.5, 0.35)
+	_fire_glow(fire, Color(1.0, 0.5, 0.15), 1.4)
+	_embers(fire + Vector2(0, -10), 40.0, 14)
+	wall_prop(M + "shelf.png", -1496.0, 330.0, 380.0, Vector2(10, 513), 80.0, 234.0)
 	prop(M + "table.png", Vector2(-820, 300), 300.0, 0.0)
 	_obstacles.append([Vector2(-900, 240), 110.0, ""])
 	_obstacles.append([Vector2(-750, 360), 110.0, ""])
