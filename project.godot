@@ -11,6 +11,7 @@ config/features=PackedStringArray("4.3", "Mobile")
 
 [autoload]
 
+Boot="*res://autoload/boot.gd"
 Game="*res://autoload/game.gd"
 Net="*res://autoload/net.gd"
 Updater="*res://autoload/updater.gd"
