@@ -458,12 +458,17 @@ func _process(delta: float) -> void:
 		sig = sig * 31 + int(_boss.hp)
 		sig = sig * 31 + int(_boss_trail * 500.0)
 	var sh := Game.run_shards
+	var gold := Game.run_gold
+	if arena and arena.has_method("purse"): # the manor hub shows the banked purse
+		var pv: Array = arena.purse()
+		sh = int(pv[0])
+		gold = int(pv[1])
 	sig = sig * 31 + sh
-	sig = sig * 31 + Game.run_gold
+	sig = sig * 31 + gold
 	if sig != _sig:
 		_sig = sig
 		_shard_label.text = str(sh)
-		_gold_label.text = str(Game.run_gold)
+		_gold_label.text = str(gold)
 		drawer.queue_redraw()
 	if Net.online and Engine.get_process_frames() % 30 == 0:
 		_ping_label.text = "Hosting" if Net.is_host() else "Ping %d ms" % Net.ping_ms
@@ -858,7 +863,8 @@ func _toggle_pause() -> void:
 		n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(n)
 	v.add_child(VTheme.divider(340, 30))
-	var room := VTheme.label("CHAMBER %d  ·  %d SHARDS GATHERED" % [Game.run_room + 1, Game.run_shards], "Caps", 15)
+	var in_hub: bool = arena != null and bool(arena.get("is_hub"))
+	var room := VTheme.label("GRAN YSOLDE'S MANOR" if in_hub else "CHAMBER %d  ·  %d SHARDS GATHERED" % [Game.run_room + 1, Game.run_shards], "Caps", 15)
 	room.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(room)
 	var resume := _menu_button("Resume", "BigButton")
@@ -873,7 +879,7 @@ func _toggle_pause() -> void:
 				st.grab_focus())
 		cc.add_child(sp))
 	v.add_child(st)
-	var quit := _menu_button("Abandon Run", "DangerButton")
+	var quit := _menu_button("Leave the Manor" if in_hub else "Abandon Run", "DangerButton")
 	quit.pressed.connect(func():
 		_toggle_pause()
 		if arena: arena.abandon())

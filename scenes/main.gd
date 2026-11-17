@@ -123,7 +123,9 @@ func go_back() -> void:
 		"sanctum":
 			_leave_sanctum()
 		"results":
-			show_sanctum()
+			_return_home()
+		"hub":
+			pass # the hub's HUD opens its own pause menu
 		"intro":
 			show_slots(Game.mode)
 		"arena":
@@ -814,7 +816,7 @@ func _after_slot() -> void:
 	if Game.mode == "coop":
 		show_coop()
 	else:
-		show_sanctum()
+		show_hub()
 
 
 # =====================================================================  3. co-op gate
@@ -1724,13 +1726,13 @@ func _show_results(victory: bool, earned: int) -> void:
 	qv.add_child(quote)
 	var who := _label("— MATRON YSOLDE" if victory else "— THE NARRATOR", "Caps", 14)
 	qv.add_child(who)
-	var btn := _button("Return to the Sanctum", func():
+	var btn := _button("Return to the Manor" if Game.mode == "solo" else "Return to the Sanctum", func():
 		if victory:
 			var vl: Array = StoryDB.next_lines("victory", StoryDB.from_save(Game.data))
 			Game.save_slot()
-			play_dialogue(vl if not vl.is_empty() else StoryData.VICTORY, show_sanctum)
+			play_dialogue(vl if not vl.is_empty() else StoryData.VICTORY, _return_home)
 		else:
-			show_sanctum(), "BigButton", 440, "confirm")
+			_return_home(), "BigButton", 440, "confirm")
 	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(btn)
 	_fade_in(r, 0.6)
@@ -1792,3 +1794,57 @@ func play_dialogue(lines: Array, on_done: Callable) -> void:
 		if _dialogue == d:
 			_dialogue = null)
 	d.start(lines, on_done)
+
+
+# =====================================================================  8. the manor hub (scenes/hub.gd)
+## Solo play walks Gran's manor between runs; co-op keeps the Sanctum lobby (show_sanctum is also the fallback).
+
+const HUB_PATH := "res://scenes/hub.gd"
+var hub: Node = null
+
+
+func show_hub(after_run := false) -> void:
+	var script: Script = load(HUB_PATH) if Game.mode == "solo" and ResourceLoader.exists(HUB_PATH) else null
+	if script == null or not script.can_instantiate():
+		show_sanctum()
+		return
+	if is_instance_valid(_dialogue):
+		_dialogue.abort()
+		_dialogue = null
+	_close_modal()
+	_free_arena()
+	_free_hub()
+	if is_instance_valid(_root):
+		_root.queue_free()
+	_root = null
+	_ui_layer.visible = false
+	screen = "hub"
+	hub = script.new()
+	add_child(hub)
+	hub.start_requested.connect(_begin_from_hub)
+	hub.leave_requested.connect(func():
+		_free_hub()
+		show_slots("solo"))
+	hub.setup_hub(_my_hero(), after_run)
+
+
+func _free_hub() -> void:
+	if is_instance_valid(hub):
+		hub.queue_free()
+	hub = null
+	get_tree().paused = false
+
+
+func _begin_from_hub() -> void:
+	Game.players = [{"peer": 1, "local_index": 0, "hero": _my_hero()}]
+	_free_hub()
+	Game.start_run(randi())
+	start_arena()
+
+
+## After a run: solo heads home to the manor (Gran has a word), co-op to the Sanctum lobby.
+func _return_home() -> void:
+	if Game.mode == "solo":
+		show_hub(true)
+	else:
+		show_sanctum()

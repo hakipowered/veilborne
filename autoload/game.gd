@@ -198,6 +198,7 @@ func default_save() -> Dictionary:
 		"shards": 0, "meta": {}, "runs": 0, "wins": 0, "best_room": 0,
 		"last_hero": "kaela", "codex": [],
 		"last_weapon": "", "last_aspect": 0, "aspects": {},
+		"gold": 0, "decor": {}, ## manor hub: banked gold and Odo's renovations (scenes/hub.gd)
 		# --- STORY (owned by data/story_db.gd; see StoryDB.default_progress) ---
 		"story": {"flags": {}, "played": {}, "last_death_by": "", "chapter_reached": 0, "bosses_beaten": {}, "gifts": {}},
 		# --- end STORY ---
@@ -292,6 +293,7 @@ func end_run(victory: bool) -> int:
 	if sdb:
 		sdb.record_run(sdb.from_save(data), victory, run_killer, run_chapter, run_bosses)
 	data["shards"] += earned
+	data["gold"] = int(data.get("gold", 0)) + run_gold ## gold is banked for Odo's renovations
 	data["best_room"] = max(int(data["best_room"]), run_room)
 	if victory:
 		data["wins"] += 1
