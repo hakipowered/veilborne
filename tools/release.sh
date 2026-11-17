@@ -51,13 +51,13 @@ else
   echo "Releasing content pack v$NAME (code $CODE) on top of APK $BASE"
   CHANGED=$(git diff --name-only --diff-filter=AMR "origin/apk-$BASE" HEAD)
   # Things only a full APK can change: they are read before the pack is loaded.
-  if echo "$CHANGED" | grep -qxE 'project\.godot|autoload/boot\.gd|export_presets\.cfg|icon\.(png|svg)'; then
+  if echo "$CHANGED" | grep -qxE 'project\.godot|autoload/boot\.gd|icon\.(png|svg)'; then
     echo "project.godot / boot.gd / icon changed since APK $BASE: use --base." >&2; exit 1
   fi
   if git diff "origin/apk-$BASE" HEAD -- '*.gd' | grep -qE '^\+class_name '; then
     echo "A script gained a class_name since APK $BASE: use --base." >&2; exit 1
   fi
-  FILES=$(echo "$CHANGED" | grep -vE '^(tools|tests|docs|build)/|\.md$|^\.git|\.gdignore$' | sed 's/\.import$//' | sort -u \
+  FILES=$(echo "$CHANGED" | grep -vE '^(tools|tests|docs|build)/|\.md$|^\.git|\.gdignore$|^export_presets\.cfg$' | sed 's/\.import$//' | sort -u \
     | while read -r f; do [ -f "$f" ] && echo "res://$f"; done || true)
   [ -n "$FILES" ] || { echo "Nothing changed since APK $BASE." >&2; exit 1; }
   echo "$FILES" | sed 's/^/  /'
