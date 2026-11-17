@@ -523,3 +523,69 @@ static func vgrad_tex(top: Color, bottom: Color, mid := Color(0, 0, 0, -1)) -> T
 static func roman(n: int) -> String:
 	const R := ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
 	return R[clampi(n, 0, 10)]
+
+
+# ---------------------------------------------------------------- safe area / layout
+
+## Test hook: when x >= 0 these insets (left, top, right, bottom, canvas units) replace the display's.
+static var debug_insets := Vector4(-1, 0, 0, 0)
+
+
+## Safe-area insets (left, top, right, bottom) in canvas units of the viewport: notches, punch holes
+## and rounded corners reported by DisplayServer.get_display_safe_area(). Zero on desktop.
+static func safe_insets(vp: Viewport) -> Vector4:
+	if debug_insets.x >= 0.0:
+		return debug_insets
+	if vp == null or not OS.has_feature("mobile"):
+		return Vector4.ZERO
+	var win := Vector2(DisplayServer.window_get_size())
+	if win.x <= 0.0 or win.y <= 0.0:
+		return Vector4.ZERO
+	var safe := Rect2(DisplayServer.get_display_safe_area())
+	var wpos := Vector2(DisplayServer.window_get_position())
+	var vis := vp.get_visible_rect().size
+	var k := vis / win
+	var l := (safe.position.x - wpos.x) * k.x
+	var t := (safe.position.y - wpos.y) * k.y
+	var r := (wpos.x + win.x - safe.end.x) * k.x
+	var b := (wpos.y + win.y - safe.end.y) * k.y
+	return Vector4(clampf(l, 0.0, vis.x * 0.2), clampf(t, 0.0, vis.y * 0.2), clampf(r, 0.0, vis.x * 0.2), clampf(b, 0.0, vis.y * 0.2))
+
+
+## The safe rect in canvas units (the visible rect minus notch insets).
+static func safe_rect(vp: Viewport) -> Rect2:
+	var vis := vp.get_visible_rect()
+	var i := safe_insets(vp)
+	return Rect2(vis.position + Vector2(i.x, i.y), vis.size - Vector2(i.x + i.z, i.y + i.w))
+
+
+## Full-rect anchors with offsets inset to the safe area; kept up to date when the window resizes
+## (rotation, fold / unfold).
+static func fit_safe(c: Control) -> void:
+	_track_insets(c, 1.0)
+
+
+## Full-rect decoration that bleeds past a safe-inset parent out to the real screen edges.
+static func bleed(c: Control) -> void:
+	_track_insets(c, -1.0)
+
+
+static func _track_insets(c: Control, sign_: float) -> void:
+	c.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var apply := func():
+		if not is_instance_valid(c) or not c.is_inside_tree():
+			return
+		var i := safe_insets(c.get_viewport()) * sign_
+		c.offset_left = i.x; c.offset_top = i.y; c.offset_right = -i.z; c.offset_bottom = -i.w
+	var hook := func():
+		apply.call()
+		var vp := c.get_viewport()
+		if vp and not vp.size_changed.is_connected(apply):
+			vp.size_changed.connect(apply)
+	c.tree_entered.connect(hook)
+	c.tree_exiting.connect(func():
+		var vp := c.get_viewport()
+		if vp and vp.size_changed.is_connected(apply):
+			vp.size_changed.disconnect(apply))
+	if c.is_inside_tree():
+		hook.call()

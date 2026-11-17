@@ -1,14 +1,28 @@
 extends Node
-## xvfb-run -a -s "-screen 0 1600x720x24" godot --rendering-driver opengl3 --path . --resolution 1600x720 res://tests/menu_shots.tscn -- --out=/dir [--only=name,name]
-## Saves ui_<screen>.png for every front-end screen.
+## xvfb-run -a -s "-screen 0 2448x1848x24" godot --rendering-driver opengl3 --path . res://tests/menu_shots.tscn -- --resolution=2448x1848 --out=/dir [--only=name,name] [--safe=l,t,r,b]
+## Saves ui_<screen>.png for every front-end screen and prints a layout audit (CLIP / OVERLAP lines)
+## for each one. --resolution resizes the window (the xvfb screen must be at least that big);
+## --safe simulates notch insets in canvas units.
+const Audit = preload("res://tests/layout_audit.gd")
+const VTheme = preload("res://ui/theme.gd")
 var out := "/tmp"
 var only: PackedStringArray = []
 var main: Node
+var problems := 0
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="): out = a.substr(6)
 		if a.begins_with("--only="): only = a.substr(7).split(",")
+		if a.begins_with("--resolution="):
+			var p := a.substr(13).split("x")
+			get_window().mode = Window.MODE_WINDOWED
+			get_window().position = Vector2i.ZERO
+			get_window().size = Vector2i(int(p[0]), int(p[1]))
+		if a.begins_with("--safe="):
+			var s := a.substr(7).split(",")
+			VTheme.debug_insets = Vector4(float(s[0]), float(s[1]), float(s[2]), float(s[3]))
+	DirAccess.make_dir_recursive_absolute(out)
 	main = load("res://scenes/main.tscn").instantiate()
 	get_tree().root.add_child.call_deferred(main)
 	_run()
@@ -19,7 +33,11 @@ func _want(n: String) -> bool:
 func _snap(n: String, wait := 1.2) -> void:
 	await get_tree().create_timer(wait).timeout
 	get_viewport().get_texture().get_image().save_png("%s/ui_%s.png" % [out, n])
-	print("shot ", n)
+	var issues := Audit.audit(get_tree())
+	problems += issues.size()
+	print("shot ", n, "  ", get_viewport().get_visible_rect().size, "  issues=", issues.size())
+	for s in issues:
+		print("   ", s)
 
 func _run() -> void:
 	await get_tree().process_frame
@@ -44,6 +62,10 @@ func _run() -> void:
 	if _want("slots"):
 		main.show_slots("solo")
 		await _snap("slots", 1.4)
+	if _want("erase"):
+		main._confirm_delete("solo", 1)
+		await _snap("erase", 0.8)
+		main.go_back()
 	if _want("coop"):
 		main.show_coop()
 		await _snap("coop", 1.2)
@@ -51,6 +73,12 @@ func _run() -> void:
 		main.coop_kind = ""
 		main.show_sanctum()
 		await _snap("sanctum", 1.4)
+	if _want("sanctum_locked"):
+		# preview a locked aspect: the Unlock button joins the row (widest state of the picker)
+		main._cycle_aspect()
+		await _snap("sanctum_locked", 0.6)
+		main._aspect_view = -1
+		main._refresh_weapons()
 	if _want("sanctum_local"):
 		main.coop_kind = "local"
 		main.show_sanctum()
@@ -78,4 +106,5 @@ func _run() -> void:
 		main._show_results(false, 23)
 		await _snap("results_defeat", 2.6)
 	Game.delete_slot("solo", 1)
+	print("LAYOUT ISSUES TOTAL ", problems)
 	get_tree().quit()

@@ -7,6 +7,7 @@ const Settings = preload("res://ui/settings.gd")
 const StoryData = preload("res://data/story.gd")
 const StoryDB = preload("res://data/story_db.gd")
 const DialogueScript = preload("res://ui/dialogue.gd")
+const FitBox = preload("res://ui/fit_box.gd")
 const ARENA_PATH := "res://scenes/arena.gd"
 
 const TEX_TITLE := "res://art/title.jpg"
@@ -131,9 +132,10 @@ func _new_screen(name_: String) -> Control:
 	_ui_layer.visible = true
 	_root = Control.new()
 	_root.name = "Screen_" + name_
-	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.theme = VTheme.get_theme()
 	_ui_layer.add_child(_root)
+	# the screen root is the safe area (notches, punch holes); backdrops bleed past it
+	VTheme.fit_safe(_root)
 	return _root
 
 
@@ -148,9 +150,9 @@ func _disable_input(c: Node) -> void:
 func _bg(parent: Control, path: String, dim: float, drift := false) -> TextureRect:
 	var r := ColorRect.new()
 	r.color = Color(0.04, 0.025, 0.055)
-	r.set_anchors_preset(Control.PRESET_FULL_RECT)
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(r)
+	VTheme.bleed(r)
 	var tex := VTheme.tex(path)
 	if tex == null:
 		return null
@@ -158,10 +160,10 @@ func _bg(parent: Control, path: String, dim: float, drift := false) -> TextureRe
 	tr.texture = tex
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tr.modulate = Color(dim, dim * 0.97, dim * 1.02)
 	parent.add_child(tr)
+	VTheme.bleed(tr)
 	if drift:
 		# Oversize and slowly pan: the furthest parallax layer.
 		tr.anchor_left = -0.04; tr.anchor_right = 1.04; tr.anchor_top = -0.04; tr.anchor_bottom = 1.04
@@ -173,12 +175,12 @@ func _bg(parent: Control, path: String, dim: float, drift := false) -> TextureRe
 
 func _vignette(parent: Control, top_a: float, bottom_a: float, radial := 0.75) -> void:
 	var tr := VTheme.image(VTheme.vgrad_tex(Color(0.03, 0.01, 0.04, top_a), Color(0.03, 0.01, 0.04, bottom_a), Color(0.03, 0.01, 0.04, min(top_a, bottom_a) * 0.25)), Vector2.ZERO, false)
-	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
 	parent.add_child(tr)
+	VTheme.bleed(tr)
 	if radial > 0.0:
 		var v := VTheme.image(VTheme.vignette_tex(Color(0.02, 0.0, 0.03, radial), 0.5), Vector2.ZERO, false)
-		v.set_anchors_preset(Control.PRESET_FULL_RECT)
 		parent.add_child(v)
+		VTheme.bleed(v)
 
 
 func _embers(parent: Control, amount := 34, near := false) -> CPUParticles2D:
@@ -219,6 +221,11 @@ func _vw() -> float:
 	return get_viewport().get_visible_rect().size.x
 
 
+## Size of the safe area (screen minus notch / cutout insets) in canvas units.
+func _safe_size() -> Vector2:
+	return VTheme.safe_rect(get_viewport()).size
+
+
 func _button(text: String, cb: Callable, variation := "", min_w := 280.0, sound := "click") -> Button:
 	var b := Button.new()
 	b.text = text
@@ -240,16 +247,34 @@ func _label(text: String, variation := "Body", size := 0) -> Label:
 	return VTheme.label(text, variation, size)
 
 
+## Full-screen margin box inside a FitBox: if the screen's content cannot fit the safe area it is
+## scaled down as a whole instead of running off the edge.
 func _margin(parent: Control, l: int, t: int, r: int, b: int) -> MarginContainer:
+	var fit := _fit(parent)
 	var m := MarginContainer.new()
-	m.set_anchors_preset(Control.PRESET_FULL_RECT)
 	m.add_theme_constant_override("margin_left", l)
 	m.add_theme_constant_override("margin_top", t)
 	m.add_theme_constant_override("margin_right", r)
 	m.add_theme_constant_override("margin_bottom", b)
 	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	parent.add_child(m)
+	fit.add_child(m)
 	return m
+
+
+## A full-rect FitBox (see ui/fit_box.gd) under parent.
+func _fit(parent: Control) -> Control:
+	var fit: Container = FitBox.new()
+	fit.set_anchors_preset(Control.PRESET_FULL_RECT)
+	parent.add_child(fit)
+	return fit
+
+
+## A full-rect CenterContainer that scales its content down when it cannot fit.
+func _centered(parent: Control) -> CenterContainer:
+	var c := CenterContainer.new()
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fit(parent).add_child(c)
+	return c
 
 
 func _fade_in(c: Control, dur := 0.35) -> void:
@@ -328,11 +353,14 @@ func _modal_shell(content: Control) -> Control:
 	dim.color = Color(0.02, 0.0, 0.03, 0.74)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	m.add_child(dim)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	m.add_child(center)
-	center.add_child(content)
 	_ui_layer.add_child(m)
+	VTheme.bleed(dim)
+	var safe := Control.new()
+	safe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	m.add_child(safe)
+	VTheme.fit_safe(safe)
+	var center := _centered(safe)
+	center.add_child(content)
 	_modal = m
 	_fade_in(m, 0.18)
 	content.resized.connect(func(): content.pivot_offset = content.size * 0.5)
@@ -601,6 +629,11 @@ func show_slots(mode: String) -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_color_override("font_color", Color(0.9, 0.82, 0.72))
 	v.add_child(hint)
+	# Continue + Erase side by side need ~464px a card; on narrower screens (16:9, 16:10, 4:3) Erase
+	# drops under Continue, and on short ones the hint line makes room for it.
+	var safe := _safe_size()
+	var stacked := safe.x - 64.0 < Game.SLOT_COUNT * 464.0 + (Game.SLOT_COUNT - 1) * 30.0
+	hint.visible = not (stacked and safe.y < 770.0)
 
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -610,7 +643,7 @@ func show_slots(mode: String) -> void:
 	var first: Button = null
 	var cards: Array = []
 	for i in Game.SLOT_COUNT:
-		var res: Array = _chronicle(row, mode, i)
+		var res: Array = _chronicle(row, mode, i, stacked)
 		cards.append(res[0])
 		if first == null:
 			first = res[1]
@@ -619,7 +652,7 @@ func show_slots(mode: String) -> void:
 	_focus_first(first)
 
 
-func _chronicle(parent: Control, mode: String, i: int) -> Array:
+func _chronicle(parent: Control, mode: String, i: int, stacked := false) -> Array:
 	var d: Dictionary = Game.peek_slot(mode, i)
 	var empty := d.is_empty()
 	var card := VBoxContainer.new()
@@ -655,8 +688,9 @@ func _chronicle(parent: Control, mode: String, i: int) -> Array:
 	top.add_child(tome)
 	var plate := PanelContainer.new()
 	plate.theme_type_variation = "Plate"
-	plate.position = Vector2(40, 196)
-	plate.size = Vector2(300, 68)
+	plate.anchor_left = 0.5; plate.anchor_right = 0.5
+	plate.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	plate.offset_left = -150; plate.offset_right = 150; plate.offset_top = 196; plate.offset_bottom = 264
 	plate.custom_minimum_size = Vector2(300, 68)
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if empty:
@@ -670,9 +704,9 @@ func _chronicle(parent: Control, mode: String, i: int) -> Array:
 	info.custom_minimum_size = Vector2(380, 150)
 	card.add_child(info)
 	var main_btn: Button
-	var actions := HBoxContainer.new()
+	var actions: BoxContainer = VBoxContainer.new() if stacked else HBoxContainer.new()
 	actions.alignment = BoxContainer.ALIGNMENT_CENTER
-	actions.add_theme_constant_override("separation", 10)
+	actions.add_theme_constant_override("separation", 2 if stacked else 10)
 	if empty:
 		var e := _label("An unwritten chronicle.\nThe Veil awaits a new tale.", "Quote", 21)
 		e.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -698,11 +732,13 @@ func _chronicle(parent: Control, mode: String, i: int) -> Array:
 		_stat_cell(grid, "Last read", lp.substr(0, 10) if lp != "" else "-")
 		main_btn = _button("Continue", func(): _select_slot(mode, i), "BigButton", 230, "confirm")
 		actions.add_child(main_btn)
+		main_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		var del := _button("Erase", func(): _confirm_delete(mode, i), "DangerButton", 120, "click")
 		del.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		del.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		actions.add_child(del)
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 12)
+	gap.custom_minimum_size = Vector2(0, 6 if stacked else 12)
 	card.add_child(gap)
 	card.add_child(actions)
 	# lift the tome when its button is hovered / focused
@@ -971,7 +1007,10 @@ func show_sanctum() -> void:
 	_bg(r, TEX_FLOOR, 0.3, true)
 	_vignette(r, 0.5, 0.8, 0.85)
 	_embers(r, 14)
-	var vw := _vw()
+	# column widths from the safe width: 16:9 and 4:3 have 1280 canvas units across, 21:9 ~1700
+	var vw := _safe_size().x
+	var left_w := 272.0 if vw >= 1240.0 else 236.0
+	var right_w := 420.0 if vw >= 1500.0 else (400.0 if vw >= 1240.0 else 380.0)
 
 	# Ysolde, a ghostly presence drifting at the left edge (decoration behind the layout)
 	var ys := VTheme.image(VTheme.portrait_tex("ysolde"))
@@ -1010,7 +1049,7 @@ func show_sanctum() -> void:
 	outer.add_child(body)
 
 	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(250, 0)
+	left.custom_minimum_size = Vector2(left_w, 0)
 	left.alignment = BoxContainer.ALIGNMENT_END
 	body.add_child(left)
 	var mode_txt := "Solo descent"
@@ -1023,7 +1062,7 @@ func show_sanctum() -> void:
 	ysn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ysn.add_theme_color_override("font_color", StoryData.speaker("ysolde")["color"])
 	left.add_child(ysn)
-	left.add_child(_button("Speak with her", _talk_ysolde, "SmallButton", 250, "open"))
+	left.add_child(_button("Speak with her", _talk_ysolde, "SmallButton", left_w, "open"))
 
 	# center: heroines
 	var mid := VBoxContainer.new()
@@ -1038,8 +1077,8 @@ func show_sanctum() -> void:
 	heroes_row.add_theme_constant_override("separation", 0)
 	heroes_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mid.add_child(heroes_row)
-	var center_w := vw - 48 - 250 - 420 - 28
-	var tile_w := clampf(center_w * 0.5, 240.0, 380.0)
+	var center_w := vw - 48 - left_w - right_w - 28
+	var tile_w := clampf(center_w * 0.5, 220.0, 380.0)
 	for hid in Game.HEROES.keys():
 		_hero_tiles[hid] = _hero_tile(heroes_row, hid, tile_w)
 	_hero_info = _label("", "Caps", 16)
@@ -1057,7 +1096,7 @@ func show_sanctum() -> void:
 
 	# right: lobby (online) + vow ledger
 	var right := VBoxContainer.new()
-	right.custom_minimum_size = Vector2(420, 0)
+	right.custom_minimum_size = Vector2(right_w, 0)
 	right.add_theme_constant_override("separation", 6)
 	body.add_child(right)
 	if _is_online():
@@ -1100,7 +1139,7 @@ func show_sanctum() -> void:
 	_status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	bottom.add_child(_status_label)
-	_begin_btn = _button("Begin Descent", _begin, "BigButton", 420, "confirm")
+	_begin_btn = _button("Begin Descent", _begin, "BigButton", right_w, "confirm")
 	bottom.add_child(_begin_btn)
 	# a slow breathing glow on the call to action
 	var bt := _begin_btn.create_tween().set_loops()
@@ -1117,13 +1156,20 @@ func show_sanctum() -> void:
 
 func _build_weapon_picker(parent: Control) -> void:
 	_weapon_btns = {}
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 6)
+	# a flow row: weapons and the aspect picker share one line when the centre column is wide
+	# (21:9), and wrap into two centred lines when it is not (16:9, 4:3)
+	var row := HFlowContainer.new()
+	row.alignment = FlowContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 4)
 	parent.add_child(row)
+	var wrow := HBoxContainer.new()
+	wrow.add_theme_constant_override("separation", 6)
+	row.add_child(wrow)
 	var wl := _label("WEAPON", "Caps", 15)
 	wl.add_theme_color_override("font_color", VTheme.GOLD_BRIGHT)
-	row.add_child(wl)
+	wl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	wrow.add_child(wl)
 	for wid in Game.WEAPON_ORDER:
 		var b := Button.new()
 		b.theme_type_variation = "IconButton"
@@ -1139,20 +1185,16 @@ func _build_weapon_picker(parent: Control) -> void:
 		b.add_child(ic)
 		VTheme.juice(b, 1.08, "click")
 		b.pressed.connect(func(): _pick_weapon(wid))
-		row.add_child(b)
+		wrow.add_child(b)
 		_weapon_btns[wid] = b
-	var arow := HBoxContainer.new()
-	arow.alignment = BoxContainer.ALIGNMENT_CENTER
-	arow.add_theme_constant_override("separation", 8)
-	row.add_child(arow)
 	_aspect_btn = _button("", _cycle_aspect, "SmallButton", 300)
-	arow.add_child(_aspect_btn)
+	row.add_child(_aspect_btn)
 	_unlock_btn = _button("", _unlock_aspect, "SmallButton", 150, "confirm")
-	arow.add_child(_unlock_btn)
+	row.add_child(_unlock_btn)
 	_weapon_info = _label("", "Body", 15)
 	_weapon_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_weapon_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_weapon_info.custom_minimum_size = Vector2(520, 0)
+	_weapon_info.custom_minimum_size = Vector2(0, 0)
 	_weapon_info.add_theme_color_override("font_color", VTheme.TEXT)
 	parent.add_child(_weapon_info)
 
@@ -1214,7 +1256,9 @@ func _refresh_weapons() -> void:
 	var av := _aspect_view if _aspect_view >= 0 else Game.run_aspect
 	var ad := Game.aspect_def(w, av)
 	var unlocked := Game.aspect_unlocked(w, av)
-	_aspect_btn.text = "%s  ▸" % String(ad.get("name", "")) if unlocked else "%s  (locked)  ▸" % String(ad.get("name", ""))
+	# a locked aspect reads dimmed; the Unlock button beside it says what it costs
+	_aspect_btn.text = "%s  ▸" % String(ad.get("name", ""))
+	_aspect_btn.modulate = Color(1, 1, 1) if unlocked else Color(0.7, 0.66, 0.74)
 	var cost := Game.aspect_cost(w, av)
 	_unlock_btn.visible = not unlocked
 	_unlock_btn.text = "Unlock · %d" % cost
@@ -1226,7 +1270,7 @@ func _refresh_weapons() -> void:
 func _hero_tile(parent: Control, hid: String, w: float) -> Button:
 	var b := Button.new()
 	b.theme_type_variation = "IconButton"
-	b.custom_minimum_size = Vector2(w, 300)
+	b.custom_minimum_size = Vector2(w, 300 if _safe_size().y >= 800.0 else 230)
 	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	b.focus_mode = Control.FOCUS_ALL
 	b.pressed.connect(func(): _pick_hero(hid))
@@ -1374,7 +1418,7 @@ func _refresh_shop() -> void:
 		var rank := Game.meta_rank(id)
 		var mx := int(def["max"])
 		if not first:
-			var dv := VTheme.divider(300, 16)
+			var dv := VTheme.divider(260, 16)
 			dv.modulate.a = 0.55
 			_shop_box.add_child(dv)
 		first = false
@@ -1389,7 +1433,7 @@ func _refresh_shop() -> void:
 		info.add_child(n)
 		var d := _label(String(def["desc"]), "Dim", 17)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		d.custom_minimum_size = Vector2(190, 0)
+		d.custom_minimum_size = Vector2(150, 0)
 		info.add_child(d)
 		var pips := HBoxContainer.new()
 		pips.add_theme_constant_override("separation", 3)
@@ -1593,9 +1637,7 @@ func _show_results(victory: bool, earned: int) -> void:
 	if victory:
 		_embers(r, 40)
 		_embers(r, 12, true)
-	var c := CenterContainer.new()
-	c.set_anchors_preset(Control.PRESET_FULL_RECT)
-	r.add_child(c)
+	var c := _centered(r)
 	var p := PanelContainer.new()
 	p.custom_minimum_size = Vector2(760, 0)
 	c.add_child(p)
