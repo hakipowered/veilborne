@@ -301,6 +301,7 @@ const HAZARD_SLOW := {"lava": 0.25, "water": 0.35, "spikes": 0.0, "debris": 0.0}
 const SPIKE_PERIOD := 3.2
 const SPIKE_WARN := 0.6
 const SPIKE_UP := 1.0
+const SpikeTrapScript := preload("res://scenes/spike_trap.gd")
 const DEBRIS_DAMAGE := 22.0
 
 # --------------------------------------------------------------- state
@@ -341,7 +342,7 @@ var _wl := 1.0
 var _wr := 1.0
 
 var _hazards: Array = []
-var _spike_nodes: Array = []     ## [hazard index, spikes Node2D, warning glow, phase]
+var _spike_nodes: Array = []     ## [hazard index, spike trap node (scenes/spike_trap.gd), phase]
 var _debris_zones: Array = []
 var _breakables: Array = []      ## [{id, pos, radius, node, obstacle, broken}]
 var _pools: Array = []           ## water pools: [center, radius]
@@ -1970,45 +1971,14 @@ func _pit(c: Vector2, r: float) -> void:
 
 func _spike_trap(c: Vector2) -> void:
 	var size := 150.0
-	var holder := Node2D.new()
-	holder.position = c
-	holder.scale = Vector2(1.0, ISO)
-	holder.z_index = -67
-	var plate := Sprite2D.new()
-	var ptex := _tex("forge/trap.png")
-	plate.texture = ptex
-	plate.rotation = PI * 0.25
-	plate.scale = Vector2.ONE * size / ptex.get_width()
-	plate.modulate = Color(0.7, 0.85, 0.8) if chapter == "garden" else Color(0.9, 0.86, 0.86)
-	holder.add_child(plate)
-	var warn := Sprite2D.new()
-	warn.texture = _glow
-	warn.material = _additive()
-	warn.scale = Vector2.ONE * size * 1.3 / 128.0
-	warn.modulate = Color(1.0, 0.35, 0.15, 0.0) if chapter == "forge" else Color(theme["light"], 0.0)
-	holder.add_child(warn)
-	add_child(holder)
-	var root := Node2D.new()
-	root.position = c + Vector2(0, 8)
-	var sp := Node2D.new()
-	root.add_child(sp)
-	var stex := _tex("hollow/spikes.png")
-	var sc := 120.0 / stex.get_height()
-	for o in [Vector2(-26, -6), Vector2(26, -6), Vector2(0, 8)]:
-		var s := Sprite2D.new()
-		s.texture = stex
-		s.centered = false
-		s.offset = Vector2(-stex.get_width() * 0.5, -stex.get_height() * 0.92)
-		s.position = o
-		s.scale = Vector2(sc * 0.7, sc * 0.75)
-		sp.add_child(s)
-	sp.scale = Vector2(1, 0.0)
-	_ysorted.append(root)
-	add_child(root)
+	var trap: Node2D = SpikeTrapScript.new()
+	trap.setup(c, chapter, theme["light"], _tex("forge/trap.png"), _glow, _dot, _smoke, SPIKE_PERIOD, SPIKE_WARN, SPIKE_UP)
+	add_child(trap)
+	_ysorted.append_array(trap.rows)
 	var k := size * 0.62
 	var poly := PackedVector2Array([c + Vector2(-k, 0), c + Vector2(0, -k * ISO), c + Vector2(k, 0), c + Vector2(0, k * ISO)])
 	_add_hazard("spikes", poly, {"period": SPIKE_PERIOD, "up": SPIKE_UP})
-	_spike_nodes.append([_hazards.size() - 1, sp, warn, _rng.randf() * SPIKE_PERIOD])
+	_spike_nodes.append([_hazards.size() - 1, trap, _rng.randf() * SPIKE_PERIOD])
 
 func _debris_zone(c: Vector2, r: float) -> void:
 	var sh := Sprite2D.new()
@@ -2501,24 +2471,10 @@ func _process_chapter(t: float, delta: float) -> void:
 		var sz := lerpf(0.4, 2.2, k)
 		s.scale = Vector2(sz, sz * ISO)
 		s.modulate.a = (1.0 - k) * 0.4 if rp[2] < 2.0 else 0.0
-	# spikes: warning glow, then up, then down
+	# spikes: warning tell, staggered strike, hold, retract (scenes/spike_trap.gd)
 	for sn in _spike_nodes:
 		var h: Dictionary = _hazards[sn[0]]
-		var ph := fmod(t + sn[3], SPIKE_PERIOD)
-		var up_at := SPIKE_PERIOD - SPIKE_UP
-		var warn_at := up_at - SPIKE_WARN
-		var target := 0.0
-		var w := 0.0
-		if ph >= up_at:
-			target = 1.0
-		elif ph >= warn_at:
-			target = 0.12
-			w = (ph - warn_at) / SPIKE_WARN
-		var sp: Node2D = sn[1]
-		sp.scale.y = move_toward(sp.scale.y, target, delta * (14.0 if target > sp.scale.y else 4.0))
-		h["active"] = sp.scale.y > 0.6
-		var wn: Sprite2D = sn[2]
-		wn.modulate.a = 0.55 * w + 0.25 * target
+		h["active"] = sn[1].step(fmod(t + sn[2], SPIKE_PERIOD))
 	# falling debris: shadow telegraph, rock drop, dust, damage signal
 	for z in _debris_zones:
 		z["t"] -= delta
