@@ -84,6 +84,16 @@ func _run() -> void:
 		main.show_sanctum()
 		await _snap("sanctum_local", 1.2)
 		main.coop_kind = ""
+	if _want("resize"):
+		# fold / rotate while in the Sanctum: the layout is rebuilt for the new aspect
+		main.show_sanctum()
+		await get_tree().create_timer(0.6).timeout
+		var w0 := get_window().size
+		var w1 := Vector2i(w0.y * 4 / 3, w0.y) if float(w0.x) / w0.y > 1.5 else Vector2i(w0.x, w0.x * 9 / 20)
+		get_window().size = w1
+		await _snap("sanctum_resized", 1.4)
+		get_window().size = w0
+		await get_tree().create_timer(0.8).timeout
 	if _want("dialogue"):
 		main.play_dialogue(load("res://data/story.gd").INTRO.slice(2, 5), func(): pass)
 		await _snap("dialogue", 2.0)

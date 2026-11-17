@@ -7,6 +7,7 @@ extends CanvasLayer
 const TouchScript := preload("res://ui/touch.gd")
 const VTheme = preload("res://ui/theme.gd")
 const Settings = preload("res://ui/settings.gd")
+const FitBox = preload("res://ui/fit_box.gd")
 const StoryData = preload("res://data/story.gd")
 const GOLD := Color(1.0, 0.82, 0.4)
 const INK := Color(0.05, 0.02, 0.06)
@@ -68,16 +69,17 @@ func build() -> void:
 	_tex_shard = VTheme.tex("shard")
 	_tex_orb = VTheme.tex("orb")
 	_tex_special = VTheme.tex("glyph_special")
+	# root is the safe area (notches / cutouts); full-screen washes bleed past it
 	root = Control.new()
-	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = VTheme.get_theme()
 	add_child(root)
+	VTheme.fit_safe(root)
 
 	_vignette = VTheme.image(VTheme.vignette_tex(Color(0.62, 0.0, 0.05, 1.0), 0.3), Vector2.ZERO, false)
-	_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_vignette.modulate.a = 0.0
 	root.add_child(_vignette)
+	VTheme.bleed(_vignette)
 
 	drawer = Control.new()
 	drawer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -605,7 +607,9 @@ func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 		var wd: Dictionary = Game.WEAPONS.get(String(hero.weapon_id), {})
 		patron = {"name": String(wd.get("name", "")), "color": wd.get("color", GOLD)}
 	var pcol: Color = patron["color"]
-	var vs := root.get_viewport_rect().size
+	var vs := root.size if root.size.x > 0.0 else root.get_viewport_rect().size
+	# on tall screens (4:3, 16:10) the gift sits in the middle instead of hugging the top
+	var oy := maxf(0.0, (vs.y - 720.0) * 0.5)
 	VTheme.sound("boon")
 
 	var ov := Control.new()
@@ -616,12 +620,12 @@ func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 	boon_panel = ov
 	var dim := ColorRect.new()
 	dim.color = Color(0.02, 0.0, 0.03, 0.62)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ov.add_child(dim)
+	VTheme.bleed(dim)
 	var tint := VTheme.image(VTheme.vignette_tex(Color(pcol.r, pcol.g, pcol.b, 0.45), 0.3), Vector2.ZERO, false)
-	tint.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ov.add_child(tint)
+	VTheme.bleed(tint)
 	_fade_node(ov, 0.25)
 
 	# the Warden herself, sliding in from the left
@@ -653,15 +657,15 @@ func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 	if forge:
 		head_txt = "%sTHE FORGE  ·  TEMPER YOUR %s" % [who, String(patron["name"]).to_upper()]
 	var head := VTheme.title_label(head_txt, 26, pcol.lightened(0.35), 7, "caps")
-	head.position = Vector2(0, 16)
+	head.position = Vector2(0, 16 + oy)
 	head.size = Vector2(vs.x, 40)
 	ov.add_child(head)
 	var line_txt := _patron_quote(patron_id) if not forge else "Steel remembers every hand that shaped it. Choose what it becomes."
 	var line := VTheme.label("“%s”" % line_txt, "Quote", 21)
 	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	line.position = Vector2(vs.x * 0.5 - 420, 56)
-	line.size = Vector2(840, 60)
+	line.position = Vector2(vs.x * 0.5 - minf(420.0, vs.x * 0.5 - 20.0), 56 + oy)
+	line.size = Vector2(minf(840.0, vs.x - 40.0), 60)
 	line.add_theme_color_override("font_color", Color(0.96, 0.9, 0.82))
 	ov.add_child(line)
 	for c in [head, line]:
@@ -669,7 +673,7 @@ func show_boon_choice(hero: Node, choices: Array, on_pick: Callable) -> void:
 
 	var first_btn: Button = null
 	var picked := [false]
-	var card_y := 128.0
+	var card_y := 128.0 + oy
 	for k in range(choices.size()):
 		var c: Dictionary = choices[k]
 		var card := _boon_card(c, hero)
@@ -834,11 +838,13 @@ func _toggle_pause() -> void:
 	pause_panel = ov
 	var dim := ColorRect.new()
 	dim.color = Color(0.02, 0.0, 0.03, 0.66)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ov.add_child(dim)
+	VTheme.bleed(dim)
+	var fit: Container = FitBox.new()
+	fit.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.add_child(fit)
 	var cc := CenterContainer.new()
-	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	ov.add_child(cc)
+	fit.add_child(cc)
 	var p := PanelContainer.new()
 	p.custom_minimum_size = Vector2(520, 0)
 	cc.add_child(p)

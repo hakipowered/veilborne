@@ -54,7 +54,31 @@ func _ready() -> void:
 	Net.connected_ok.connect(_on_net_connected)
 	Net.disconnected.connect(_on_net_disconnected)
 	Net.lobby_changed.connect(_on_lobby_changed)
+	_last_vp = get_viewport().get_visible_rect().size
+	get_viewport().size_changed.connect(_on_viewport_resized)
 	show_title()
+
+
+## Fold / unfold, rotation, window resize: the screens whose layout is chosen from the width are
+## rebuilt (debounced) so they reflow; the rest follow their anchors and FitBoxes.
+var _resize_gen := 0
+var _last_vp := Vector2.ZERO
+
+func _on_viewport_resized() -> void:
+	_resize_gen += 1
+	var gen := _resize_gen
+	await get_tree().create_timer(0.25).timeout
+	if gen != _resize_gen:
+		return
+	var sz := get_viewport().get_visible_rect().size
+	if sz.is_equal_approx(_last_vp):
+		return
+	_last_vp = sz
+	if is_instance_valid(_modal) or is_instance_valid(_dialogue):
+		return
+	match screen:
+		"slots": show_slots(Game.mode)
+		"sanctum": show_sanctum()
 
 
 func _notification(what: int) -> void:

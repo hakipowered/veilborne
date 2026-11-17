@@ -26,7 +26,8 @@ var _last_sig := -1
 
 
 func _ready() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# covers the whole screen (so local == viewport coordinates) even inside the safe-area HUD root
+	VTheme.bleed(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_orb = VTheme.tex("orb")
 	_ring = VTheme.tex("ring")
@@ -39,9 +40,10 @@ func _screen() -> Vector2:
 	return get_viewport_rect().size
 
 
-## [center, radius, label, accent color]
+## [center, radius, label, accent color]. Anchored to the bottom-right corner of the safe area,
+## so a notch or rounded corner never eats a button.
 func _buttons() -> Dictionary:
-	var s := _screen()
+	var s := VTheme.safe_rect(get_viewport()).end
 	return {
 		"attack": [Vector2(s.x - 150, s.y - 150), 84.0, "ATTACK", Color(1.0, 0.6, 0.25)],
 		"dash": [Vector2(s.x - 322, s.y - 98), 62.0, "DASH", Color(0.55, 0.85, 1.0)],
@@ -113,7 +115,8 @@ func _draw() -> void:
 			if _orb:
 				draw_texture_rect(_orb, Rect2(k - Vector2(40, 40), Vector2(80, 80)), false)
 	if not joy_drawn:
-		var c := Vector2(180, _screen().y - 170)
+		var sr := VTheme.safe_rect(get_viewport())
+		var c := Vector2(sr.position.x + 180, sr.end.y - 170)
 		if _ring:
 			draw_texture_rect(_ring, Rect2(c - Vector2.ONE * (JOY_RADIUS + 14), Vector2.ONE * (JOY_RADIUS + 14) * 2), false, Color(1, 1, 1, 0.3))
 		if _orb:

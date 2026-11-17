@@ -42,8 +42,9 @@ func _ready() -> void:
 
 
 func _build() -> void:
+	# the safe area (notches / cutouts); the dimming washes bleed past it to the screen edges
 	_root = Control.new()
-	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	VTheme.fit_safe(_root)
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
 	_root.theme = VTheme.get_theme()
 	_root.gui_input.connect(_on_root_input)
@@ -51,12 +52,13 @@ func _build() -> void:
 
 	var dim := ColorRect.new()
 	dim.color = Color(0.02, 0.0, 0.03, 0.28)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(dim)
+	VTheme.bleed(dim)
 	var shade := VTheme.image(VTheme.vgrad_tex(Color(0.02, 0, 0.03, 0.0), Color(0.02, 0, 0.03, 0.92)), Vector2.ZERO, false)
-	shade.anchor_left = 0; shade.anchor_right = 1; shade.anchor_top = 0.4; shade.anchor_bottom = 1
 	_root.add_child(shade)
+	VTheme.bleed(shade)
+	shade.anchor_top = 0.4
 
 	for side in ["left", "right"]:
 		var p := TextureRect.new()
@@ -155,8 +157,9 @@ func _next() -> void:
 	set_process(true)
 
 
+## Size of the safe area the dialogue lays out in (portraits are positioned in _root's space).
 func _vp() -> Vector2:
-	return get_viewport().get_visible_rect().size
+	return VTheme.safe_rect(get_viewport()).size
 
 
 func _show_speaker(sid: String, spk: Dictionary) -> void:
