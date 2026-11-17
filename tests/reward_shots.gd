@@ -8,6 +8,7 @@ var out := "/tmp"
 var arena
 var fails := 0
 var _dlg: CanvasLayer = null
+var _cam_zoom := 1.0
 
 
 func _ready() -> void:
@@ -70,9 +71,16 @@ func _near_doors(h: Node) -> void:
 	for p in arena.door_points:
 		c += p
 	c /= maxf(1.0, arena.door_points.size())
+	var box := Rect2(c, Vector2.ZERO)
+	for p in arena.door_points:
+		box = box.expand(p + Vector2(0, -330)).expand(p + Vector2(0, 120))
 	h.position = arena.resolve_collision(c + Vector2(0, 150), 30.0)
 	h.facing = Vector2(0, -1)
-	arena.camera.position = h.position + Vector2(0, -150)
+	box = box.expand(h.position)
+	var vs := get_viewport().get_visible_rect().size
+	var z := minf(_cam_zoom, minf(vs.x / (box.size.x + 500.0), vs.y / (box.size.y + 400.0)))
+	arena.camera.zoom = Vector2(z, z)
+	arena.camera.position = box.get_center()
 	arena.camera.reset_smoothing()
 
 
@@ -86,6 +94,7 @@ func _idx(floor_key: String, type := "combat") -> int:
 func _run() -> void:
 	await get_tree().create_timer(0.6).timeout
 	var h := _hero()
+	_cam_zoom = arena.camera.zoom.x
 	# ---- every reward object, in a garden chamber
 	var gi := _idx("garden")
 	for kind in ["boon", "forge", "heal", "gold", "shards"]:
@@ -136,6 +145,7 @@ func _run() -> void:
 	arena.door_rewards = ["forge", "boon"]
 	_near_doors(h)
 	await _snap("doors_elite_next", 1.0)
+	arena.camera.zoom = Vector2(_cam_zoom, _cam_zoom)
 	# ---- the shop (first meeting plays the intro)
 	var si := _idx("forge", "shop")
 	await _room(si, "shop")
@@ -146,7 +156,7 @@ func _run() -> void:
 		var sh: Node2D = arena.rewards.shop
 		print("shop at ", sh.position, " clutter score ", arena.rewards.shop_score)
 		h.position = sh.position + Vector2(-20, 130)
-		arena.camera.position = sh.position + Vector2(0, -60)
+		arena.camera.position = sh.position + Vector2(0, -110)
 		arena.camera.reset_smoothing()
 		if is_instance_valid(_dlg):
 			await _snap("shop_intro", 1.5)

@@ -130,7 +130,7 @@ func _free_spot() -> Vector2:
 		var q: Vector2 = arena.resolve_collision(p, 60.0)
 		var score := q.distance_to(p) * 3.0 + q.length() * 0.4
 		for probe in [q, q + Vector2(0, 40), q + Vector2(70, 0), q - Vector2(70, 0), q + Vector2(0, 100)]:
-			if _hazard_near(probe):
+			if _hazard_near(probe) or not _on_floor(probe):
 				score += 3000.0
 		if hero_at != Vector2.INF and q.distance_to(hero_at) < 140.0:
 			score += 300.0
@@ -164,6 +164,12 @@ func _clear_props(at: Vector2) -> void:
 
 
 ## Any floor hazard (lava, water, spikes even while retracted) under p.
+## Solid floor (irregular room shapes: not over a chasm or the void), `margin` px in from the edge.
+func _on_floor(p: Vector2, margin := 30.0) -> bool:
+	var sh = arena.env.get("_shape")
+	return sh == null or sh.on_floor(p, margin)
+
+
 func _hazard_near(p: Vector2) -> bool:
 	for hz in arena.env.get_hazards():
 		var rc: Rect2 = hz["rect"]
@@ -176,15 +182,18 @@ func _shop_spot() -> Vector2:
 	var half: Vector2 = arena.room_half
 	var best := Vector2(40, -half.y * 0.12)
 	var bs := INF
-	for gy in range(-5, 5):
-		for gx in range(-6, 7):
-			var p := Vector2(gx * half.x * 0.1, gy * half.y * 0.1 - half.y * 0.05)
+	var sh = arena.env.get("_shape")
+	var area := Rect2(-half, half * 2.0) if sh == null else Rect2(sh.bounds)
+	var mid := area.get_center()
+	for gy in range(1, 14):
+		for gx in range(1, 16):
+			var p := area.position + area.size * Vector2(gx / 16.0, gy / 14.0)
 			var q: Vector2 = arena.resolve_collision(p, 80.0)
-			var score := q.distance_to(p) * 4.0 + q.length() * 0.15
+			var score := q.distance_to(p) * 4.0 + q.distance_to(mid) * 0.15
 			for off in [Vector2(-220, 60), Vector2(0, 60), Vector2(200, 30), Vector2(0, 180), Vector2(-150, 160),
 					Vector2(150, 160), Vector2(-60, -180), Vector2(0, -60), Vector2(280, -80), Vector2(-300, 20),
 					Vector2(-200, -40), Vector2(200, -140), Vector2(100, -110), Vector2(-100, 0)]:
-				if _hazard_near(q + off):
+				if _hazard_near(q + off) or not _on_floor(q + off, 20.0):
 					score += 2000.0
 				if arena.resolve_collision(q + off, 40.0).distance_to(q + off) > 6.0:
 					score += 25.0 # props are cleared away for the stall (_clear_props); walls are not
@@ -261,7 +270,9 @@ func _buy(o: Node2D, h: Node) -> bool:
 			h.heal(amt)
 			arena.float_text(h.position + Vector2(0, -130), "+%d" % int(amt), Color(0.45, 1, 0.6))
 		"vigor":
-			h.add_boon("tidal_heart", 0)
+			if int(h.boons.get("tidal_heart", {}).get("level", 0)) < Game.CARD_MAX_LEVEL:
+				h.add_boon("tidal_heart", 0)
+			h.heal(h.max_hp)
 			arena.hud.refresh()
 			arena.float_text(h.position + Vector2(0, -130), "+max health", Color(0.45, 1, 0.8))
 		"shards":
@@ -340,21 +351,21 @@ func bias_boons(choices: Array) -> Array:
 	var ids: Array = []
 	for c in choices:
 		ids.append(String(c["id"]))
-	var pool: Array = []
-	for b in Game.BOONS:
-		if String(b["patron"]) == boon_patron and not ids.has(String(b["id"])):
-			pool.append(b)
-	if pool.is_empty():
-		return choices
-	var b: Dictionary = pool[posmod(hash("%d:%d" % [Game.run_seed, arena.room_index]), pool.size())]
-	var first: Dictionary = choices[0].duplicate()
-	first["id"] = b["id"]
 	var owned: Dictionary = {}
 	for h in _local:
 		if is_instance_valid(h):
 			owned = h.boons
-	first["upgrade"] = owned.has(b["id"])
-	choices[0] = first
+	var max_lvl: int = Game.CARD_MAX_LEVEL
+	var pool: Array = []
+	for b in Game.BOONS:
+		if String(b["patron"]) == boon_patron and not ids.has(String(b["id"])) \
+				and int(owned.get(b["id"], {}).get("level", 0)) < max_lvl:
+			pool.append(b)
+	if pool.is_empty():
+		return choices
+	var b: Dictionary = pool[posmod(hash("%d:%d" % [Game.run_seed, arena.room_index]), pool.size())]
+	var r := int(choices[0].get("rarity", 0))
+	choices[0] = Game._choice(String(b["id"]), r, owned.get(b["id"], {}))
 	return choices
 
 
