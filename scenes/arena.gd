@@ -674,6 +674,9 @@ func _start_cast(hero: Node, pos: Vector2, dir: Vector2, aim: Vector2, seq: int,
 	if casts.size() >= MAX_CASTS:
 		casts.pop_front()
 	casts.append(c)
+	if c["kind"] == "shield":
+		# a long Bastion spin plus the ricochets home must not be cut short by the generic lifetime
+		c["life"] = 6.0 + float(c["anchor"]) + 0.6 * float(c["ricochet"])
 	if c["kind"] == "twin" and float(st["w_multi"]) > 0.0:
 		# Eclipse: a second crescent mirrored across the aim line
 		var perp := (aim - pos).normalized().orthogonal() * 70.0
@@ -851,7 +854,8 @@ func _cast_volley(c: Dictionary, hero: Node, _delta: float) -> bool:
 			return t > land + 0.13 * c["pulses"] + 0.3
 	return false
 
-## Shield: thrown to the point, then either ricochets between foes or lodges there spinning; then returns.
+## Shield: thrown to the point; it either ricochets between foes straight away, or (Bastion / Anchored Aegis)
+## lodges there spinning and then ricochets; then returns.
 func _cast_aegis(c: Dictionary, hero: Node, delta: float) -> bool:
 	var t: float = c["t"]
 	match int(c["stage"]):
@@ -914,7 +918,10 @@ func _cast_aegis(c: Dictionary, hero: Node, delta: float) -> bool:
 				_area_hit(c, hero, c["to"], c["r"], c["dmg"] * 0.28, c["seq"] * 64 + 10 + c["n"])
 				spark(c["to"] + Vector2(0, -25), c["color"], 3)
 			if c["t2"] >= c["anchor"]:
-				c["stage"] = 4
+				# the spin ends: it ricochets home through nearby foes (Rebound Rim adds hops here too)
+				c["stage"] = 2
+				c["hits"] = {}
+				c["target"] = null
 		4:
 			if _fly(c, hero.position, 1400.0, delta):
 				return true
@@ -1339,7 +1346,7 @@ func _offer_next(queue: Array, kind := "boon") -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("%d:%d:%s:%s" % [Game.run_seed, room_index, h.key, kind])
 	if kind == "forge":
-		var fc := Game.roll_forge(rng, h.weapon_id, h.boons.get("_forge", {}))
+		var fc := Game.roll_forge(rng, h.weapon_id, h.boons.get("_forge", {}), 3, int(h.aspect))
 		if fc.is_empty():
 			_offer_next(queue, kind)
 			return
@@ -1753,12 +1760,7 @@ func _draw_airfx() -> void:
 							airfx.draw_line(gx + Vector2(-8, y - 50), gx + Vector2(0, y), Color(col, 0.75), 4.0)
 			"shield":
 				if st >= 1:
-					var at: Vector2 = c["to"] + Vector2(0, -40) if st == 3 else p
-					airfx.draw_circle(at, 52.0, Color(col, 0.25))
-					if st == 3:
-						for j in range(3):
-							var a0 := now * 12.0 + j * TAU / 3.0
-							airfx.draw_arc(at, 70.0, a0, a0 + 1.2, 12, Color(col, 0.65), 5.0)
+					_shield_airfx(c, now)
 			"scythe":
 				if st >= 1:
 					var at: Vector2 = c["to"] + Vector2(0, -40) if st == 2 else p
@@ -1781,6 +1783,76 @@ func _crescent(at: Vector2, ang: float, r: float, col: Color) -> void:
 
 var _cpts := PackedVector2Array()
 
+## Thrown shield, as a whirling sawblade lying almost flat over the floor: its face turns in its own
+## plane and is THEN squashed into the floor ellipse (so it never reads as an upright coin).
+const SHIELD_DISC := 96.0
+const SHIELD_FLAT := 0.46
+const SHIELD_SPIN := 19.0 ## rad/s
+
+## ground point and hover height of the thrown shield
+func _shield_place(c: Dictionary, now: float) -> Array:
+	if int(c["stage"]) == 3:
+		return [c["to"], 24.0 + 3.0 * sin(now * 7.0)]
+	return [c["pos"], 46.0]
+
+func _shield_disc(c: Dictionary, now: float) -> void:
+	var tex := _icon("weapon_shield")
+	if tex == null:
+		return
+	var pl := _shield_place(c, now)
+	var g: Vector2 = pl[0]
+	var at: Vector2 = g - Vector2(0, pl[1])
+	var r := SHIELD_DISC * 0.5
+	# soft ground shadow under the hovering blade
+	overlay.draw_set_transform(g, 0.0, Vector2(1.0, SHIELD_FLAT * 0.85))
+	overlay.draw_circle(Vector2.ZERO, r * 1.05, Color(0, 0, 0, 0.32))
+	overlay.draw_circle(Vector2.ZERO, r * 0.7, Color(0, 0, 0, 0.2))
+	var spin := now * SHIELD_SPIN
+	var flat := Transform2D(0.0, Vector2(1.0, SHIELD_FLAT), 0.0, Vector2.ZERO)
+	var rect := Rect2(-r, -r, SHIELD_DISC, SHIELD_DISC)
+	# rim thickness: the same disc, darkened, a few pixels lower
+	for j in range(3):
+		overlay.draw_set_transform_matrix(Transform2D(0.0, at + Vector2(0, 7.0 - 2.0 * j)) * flat * Transform2D(spin, Vector2.ZERO))
+		overlay.draw_texture_rect(tex, rect, false, Color(0.28, 0.18, 0.08, 1.0))
+	# motion blur: faint copies trailing the spin, then the face itself
+	for j in [2, 1]:
+		overlay.draw_set_transform_matrix(Transform2D(0.0, at) * flat * Transform2D(spin - 0.2 * j, Vector2.ZERO))
+		overlay.draw_texture_rect(tex, rect, false, Color(1, 1, 1, 0.22))
+	overlay.draw_set_transform_matrix(Transform2D(0.0, at) * flat * Transform2D(spin, Vector2.ZERO))
+	overlay.draw_texture_rect(tex, rect, false)
+	overlay.draw_set_transform(Vector2.ZERO)
+
+## Additive part of the thrown shield: rim glow, blur streaks around the rim, sparks flung off the edge.
+func _shield_airfx(c: Dictionary, now: float) -> void:
+	var col: Color = c["color"]
+	var pl := _shield_place(c, now)
+	var at: Vector2 = pl[0] - Vector2(0, pl[1])
+	var lodged := int(c["stage"]) == 3
+	var r := SHIELD_DISC * 0.5
+	var spin := now * SHIELD_SPIN
+	airfx.draw_set_transform(at, 0.0, Vector2(1.0, SHIELD_FLAT))
+	airfx.draw_circle(Vector2.ZERO, r * 1.12, Color(col, 0.16))
+	# streak arcs hugging the rim, each with a fading tail behind its head
+	for j in range(4):
+		var head := spin + j * TAU / 4.0
+		for q in range(4):
+			var a1 := head - q * 0.28
+			airfx.draw_arc(Vector2.ZERO, r * (1.04 + 0.05 * (j % 2)), a1 - 0.3, a1, 6, Color(col.lightened(0.4), 0.5 * (1.0 - q / 4.0)), 4.0 - q * 0.7)
+	airfx.draw_set_transform(Vector2.ZERO)
+	# sparks: short-lived tangent flecks thrown off the rim (stronger while grinding in place)
+	var n := 7 if lodged else 3
+	var seed_ := int(c["seq"]) * 131
+	for j in range(n):
+		var h := float((seed_ + j * 7919) % 997) / 997.0
+		var ph := fmod(now * 2.6 + h, 1.0)
+		var a := spin * 0.35 + h * TAU + j * 0.9
+		var rim := at + Vector2(cos(a), sin(a) * SHIELD_FLAT) * r
+		var tang := Vector2(-sin(a), cos(a) * SHIELD_FLAT).normalized()
+		var p0 := rim + tang * (ph * 70.0) + Vector2(0, ph * ph * 30.0)
+		var p1 := p0 - tang * (16.0 * (1.0 - ph) + 4.0)
+		var sc := Color(1.0, 0.85, 0.5).lerp(col, ph)
+		airfx.draw_line(p1, p0, Color(sc, 1.0 - ph), 3.0 * (1.0 - ph) + 1.0)
+
 ## Painted pieces drawn with normal blending in the overlay: thrown shield / scythe, arrows' ink, exit rewards.
 func _draw_weapon_overlay() -> void:
 	var now := Time.get_ticks_msec() * 0.001
@@ -1793,6 +1865,9 @@ func _draw_weapon_overlay() -> void:
 		var k: String = c["kind"]
 		var st: int = c["stage"]
 		if st < 1 or (k != "shield" and k != "scythe"):
+			continue
+		if k == "shield":
+			_shield_disc(c, now)
 			continue
 		var lodged: bool = (k == "shield" and st == 3) or (k == "scythe" and st == 2)
 		var at: Vector2 = (c["to"] + Vector2(0, -40)) if lodged else (c["pos"] + Vector2(0, -50))

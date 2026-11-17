@@ -124,19 +124,20 @@ func recompute_stats() -> void:
 		if b.is_empty():
 			continue
 		var info: Dictionary = boons[id]
-		var v: int = b["values"][int(info["rarity"])]
-		stats[b["stat"]] += v * int(info["level"])
+		stats[b["stat"]] += Game.card_value(b, int(info["rarity"]), int(info["level"]))
 	var forge: Dictionary = boons.get("_forge", {})
 	for id in forge.keys():
 		var f := Game.forge_by_id(String(id))
 		if f.is_empty() or not stats.has(f["stat"]):
 			continue
 		var info: Dictionary = forge[id]
-		stats[f["stat"]] += f["values"][clampi(int(info["rarity"]), 0, 2)] * int(info["level"])
+		stats[f["stat"]] += Game.card_value(f, int(info["rarity"]), int(info["level"]))
 	var mods: Dictionary = Game.aspect_def(weapon_id, aspect).get("mods", {})
 	for k in mods.keys():
 		if stats.has(k):
 			stats[k] += mods[k]
+	# stacked damage reduction (aspect + boons + forge) never reaches immunity or turns hits into heals
+	stats["armor"] = minf(float(stats["armor"]), ARMOR_CAP)
 	var meta_on := controlled
 	var old_max := max_hp
 	max_hp = int(def["hp"]) + stats["max_hp_bonus"] + (10 * Game.meta_rank("vitality") if meta_on else 0)
@@ -148,9 +149,12 @@ func recompute_stats() -> void:
 	stats["speed_meta"] = 1.0 + (0.04 * Game.meta_rank("swift") if meta_on else 0.0)
 	dash_charges = 1 + int(stats["dash_charges"])
 
+const ARMOR_CAP := 70.0
+
+## Re-picking an owned card raises its level (max Game.CARD_MAX_LEVEL); rarity never drops.
 func add_boon(id: String, rarity: int) -> void:
 	if boons.has(id):
-		boons[id]["level"] += 1
+		boons[id]["level"] = mini(int(boons[id]["level"]) + 1, Game.CARD_MAX_LEVEL)
 		boons[id]["rarity"] = max(boons[id]["rarity"], rarity)
 	else:
 		boons[id] = {"level": 1, "rarity": rarity}
@@ -163,7 +167,7 @@ func add_forge(id: String, rarity: int) -> void:
 		boons["_forge"] = {}
 	var forge: Dictionary = boons["_forge"]
 	if forge.has(id):
-		forge[id]["level"] += 1
+		forge[id]["level"] = mini(int(forge[id]["level"]) + 1, Game.CARD_MAX_LEVEL)
 		forge[id]["rarity"] = max(forge[id]["rarity"], rarity)
 	else:
 		forge[id] = {"level": 1, "rarity": rarity}

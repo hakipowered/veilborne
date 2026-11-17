@@ -27,20 +27,21 @@ const PATRONS := {
 	"sable": {"name": "Sable of Thorns", "color": Color(0.75, 0.3, 0.85)},
 }
 
-## stat: which hero stat it modifies; value: per-rarity amount.
+## stat: which hero stat it modifies; values: per-rarity amount at Level I; step: added per further level.
+## Picking a card you own levels it up (Level I -> II -> III, see card_value); maxed cards are no longer offered.
 const BOONS := [
-	{"id": "ember_strike", "patron": "oriel", "name": "Ember Strike", "desc": "Attacks deal +%d%% damage.", "stat": "attack_mult", "values": [25, 40, 60]},
-	{"id": "kindle", "patron": "oriel", "name": "Kindle", "desc": "Attacks burn foes for %d damage/sec.", "stat": "burn", "values": [6, 10, 15]},
-	{"id": "flare_cast", "patron": "oriel", "name": "Solar Flare", "desc": "Special deals +%d%% damage.", "stat": "special_mult", "values": [40, 65, 100]},
-	{"id": "thunder_step", "patron": "vessa", "name": "Thunder Step", "desc": "Dash strikes nearby foes for %d.", "stat": "dash_shock", "values": [15, 25, 40]},
-	{"id": "chain_arc", "patron": "vessa", "name": "Chain Arc", "desc": "Hits arc lightning to %d extra foes.", "stat": "chain", "values": [1, 2, 3]},
-	{"id": "gale_feet", "patron": "vessa", "name": "Gale Feet", "desc": "Move +%d%% faster.", "stat": "speed_mult", "values": [12, 20, 30]},
-	{"id": "tidal_heart", "patron": "mireth", "name": "Tidal Heart", "desc": "+%d max health (and heal it).", "stat": "max_hp_bonus", "values": [20, 35, 55]},
-	{"id": "undertow", "patron": "mireth", "name": "Undertow", "desc": "Heal %d health per kill.", "stat": "lifesteal", "values": [2, 4, 6]},
-	{"id": "riptide", "patron": "mireth", "name": "Riptide", "desc": "Special knocks foes back and gains +%d%% size.", "stat": "special_size", "values": [30, 50, 80]},
-	{"id": "thorn_crit", "patron": "sable", "name": "Thorned Kiss", "desc": "+%d%% critical hit chance.", "stat": "crit", "values": [10, 18, 28]},
-	{"id": "briar_ward", "patron": "sable", "name": "Briar Ward", "desc": "Take %d%% less damage.", "stat": "armor", "values": [10, 18, 25]},
-	{"id": "second_dash", "patron": "sable", "name": "Shadow Step", "desc": "+%d dash charge.", "stat": "dash_charges", "values": [1, 1, 2]},
+	{"id": "ember_strike", "patron": "oriel", "name": "Ember Strike", "desc": "Attacks deal +%d%% damage.", "stat": "attack_mult", "values": [25, 40, 60], "step": 15},
+	{"id": "kindle", "patron": "oriel", "name": "Kindle", "desc": "Attacks burn foes for %d damage/sec.", "stat": "burn", "values": [6, 10, 15], "step": 4},
+	{"id": "flare_cast", "patron": "oriel", "name": "Solar Flare", "desc": "Special deals +%d%% damage.", "stat": "special_mult", "values": [40, 65, 100], "step": 25},
+	{"id": "thunder_step", "patron": "vessa", "name": "Thunder Step", "desc": "Dash strikes nearby foes for %d.", "stat": "dash_shock", "values": [15, 25, 40], "step": 10},
+	{"id": "chain_arc", "patron": "vessa", "name": "Chain Arc", "desc": "Hits arc lightning to %d extra foes.", "stat": "chain", "values": [1, 2, 3], "step": 1},
+	{"id": "gale_feet", "patron": "vessa", "name": "Gale Feet", "desc": "Move +%d%% faster.", "stat": "speed_mult", "values": [12, 20, 30], "step": 6},
+	{"id": "tidal_heart", "patron": "mireth", "name": "Tidal Heart", "desc": "+%d max health (and heal it).", "stat": "max_hp_bonus", "values": [20, 35, 55], "step": 15},
+	{"id": "undertow", "patron": "mireth", "name": "Undertow", "desc": "Heal %d health per kill.", "stat": "lifesteal", "values": [2, 4, 6], "step": 2},
+	{"id": "riptide", "patron": "mireth", "name": "Riptide", "desc": "Specials strike a +%d%% wider area.", "stat": "special_size", "values": [30, 50, 80], "step": 15},
+	{"id": "thorn_crit", "patron": "sable", "name": "Thorned Kiss", "desc": "+%d%% critical hit chance.", "stat": "crit", "values": [10, 18, 28], "step": 6},
+	{"id": "briar_ward", "patron": "sable", "name": "Briar Ward", "desc": "Take %d%% less damage.", "stat": "armor", "values": [10, 18, 25], "step": 6},
+	{"id": "second_dash", "patron": "sable", "name": "Shadow Step", "desc": "+%d dash charge.", "stat": "dash_charges", "values": [1, 1, 2], "step": 1},
 ]
 ## ---------------------------------------------------------------- weapons
 ## Weapons are separate from the heroine: any heroine can carry any weapon.
@@ -94,7 +95,7 @@ const WEAPONS := {
 		"aspects": [
 			{"name": "Aspect of the Bulwark", "desc": "Thrown shield ricochets between foes and returns. You take 10% less damage.", "cost": 0, "mods": {"armor": 10}},
 			{"name": "Aspect of Rebound", "desc": "The thrown shield ricochets to 2 more foes.", "cost": 40, "mods": {"w_ricochet": 2}},
-			{"name": "Aspect of the Bastion", "desc": "The thrown shield lodges at the aimed point, spinning for 4 s and grinding all around it, then returns.", "cost": 80, "mods": {"w_anchor": 4.0}},
+			{"name": "Aspect of the Bastion", "desc": "The thrown shield lodges at the aimed point, spinning for 4 s and grinding all around it, then ricochets home.", "cost": 80, "mods": {"w_anchor": 4.0}},
 		],
 	},
 	"scythe": {
@@ -114,26 +115,26 @@ const WEAPON_ORDER := ["spear", "twin", "bow", "shield", "scythe"]
 
 ## In-run weapon upgrades from the Forge reward. Stored per hero in boons["_forge"] = {id: {level, rarity}}.
 const FORGE := [
-	{"id": "spear_echo", "weapon": "spear", "name": "Echo Leap", "desc": "Ember Leap slams a second time for %d%% damage.", "stat": "w_twice", "values": [50, 75, 100]},
-	{"id": "spear_comet", "weapon": "spear", "name": "Comet Thrust", "desc": "Each dash ends in a spear thrust for %d damage.", "stat": "w_dash_strike", "values": [18, 28, 40]},
-	{"id": "spear_haft", "weapon": "spear", "name": "Long Haft", "desc": "Thrusts reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40]},
-	{"id": "spear_cinder", "weapon": "spear", "name": "Trail of Cinders", "desc": "Ember Leap leaves burning ground (%d damage/sec).", "stat": "w_pool", "values": [10, 16, 24]},
-	{"id": "twin_wane", "weapon": "twin", "name": "Lingering Moon", "desc": "The crescent whirls %d%% longer.", "stat": "w_whirl", "values": [40, 70, 100]},
-	{"id": "twin_home", "weapon": "twin", "name": "Homeward Crescent", "desc": "The crescent flies back to you, cutting for %d%% damage.", "stat": "w_return", "values": [60, 90, 130]},
-	{"id": "twin_step", "weapon": "twin", "name": "Moonlit Step", "desc": "Dashing slashes foes you pass for %d.", "stat": "w_dash_strike", "values": [14, 22, 32]},
-	{"id": "twin_quick", "weapon": "twin", "name": "Quickened Edges", "desc": "Attack %d%% faster.", "stat": "w_speed", "values": [12, 20, 30]},
-	{"id": "bow_pierce", "weapon": "bow", "name": "Piercing Fletch", "desc": "Arrows pierce %d more foes.", "stat": "w_pierce", "values": [1, 2, 3]},
-	{"id": "bow_split", "weapon": "bow", "name": "Split Shot", "desc": "Fully drawn shots split into %d extra arrows.", "stat": "w_split", "values": [2, 2, 4]},
-	{"id": "bow_draw", "weapon": "bow", "name": "Quick Draw", "desc": "Draw %d%% faster.", "stat": "w_charge", "values": [25, 40, 60]},
-	{"id": "bow_rain", "weapon": "bow", "name": "Endless Rain", "desc": "The volley lands %d more waves.", "stat": "w_pulses", "values": [1, 2, 3]},
-	{"id": "shield_rebound", "weapon": "shield", "name": "Rebound Rim", "desc": "The thrown shield ricochets to %d more foes.", "stat": "w_ricochet", "values": [1, 2, 3]},
-	{"id": "shield_anchor", "weapon": "shield", "name": "Anchored Aegis", "desc": "The thrown shield lodges at the aimed point and spins there for %.1f s.", "stat": "w_anchor", "values": [2.5, 3.5, 4.5]},
-	{"id": "shield_rush", "weapon": "shield", "name": "Vanguard Rush", "desc": "The rushing third strike deals +%d%% damage and goes farther.", "stat": "w_rush", "values": [40, 70, 100]},
-	{"id": "shield_guard", "weapon": "shield", "name": "Sunlit Guard", "desc": "Take %d%% less damage.", "stat": "armor", "values": [6, 10, 15]},
-	{"id": "scythe_chain", "weapon": "scythe", "name": "Longer Chain", "desc": "Sweeps reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40]},
-	{"id": "scythe_hook", "weapon": "scythe", "name": "Hooked Edge", "desc": "Every sweep drags foes toward you (+%d pull).", "stat": "w_yank", "values": [1, 1, 2]},
-	{"id": "scythe_maw", "weapon": "scythe", "name": "Hungry Maw", "desc": "The vortex lasts %d%% longer and pulls harder.", "stat": "w_whirl", "values": [40, 70, 100]},
-	{"id": "scythe_soul", "weapon": "scythe", "name": "Soulreap", "desc": "Heal %d for each foe the vortex catches.", "stat": "w_soul", "values": [1, 2, 3]},
+	{"id": "spear_echo", "weapon": "spear", "name": "Echo Leap", "desc": "Ember Leap slams a second time for %d%% damage.", "stat": "w_twice", "values": [50, 75, 100], "step": 25},
+	{"id": "spear_comet", "weapon": "spear", "name": "Comet Thrust", "desc": "Each dash ends in a spear thrust for %d damage.", "stat": "w_dash_strike", "values": [18, 28, 40], "step": 10},
+	{"id": "spear_haft", "weapon": "spear", "name": "Long Haft", "desc": "Thrusts reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40], "step": 10},
+	{"id": "spear_cinder", "weapon": "spear", "name": "Trail of Cinders", "desc": "Ember Leap leaves burning ground (%d damage/sec).", "stat": "w_pool", "values": [10, 16, 24], "step": 6},
+	{"id": "twin_wane", "weapon": "twin", "name": "Lingering Moon", "desc": "The crescent whirls %d%% longer.", "stat": "w_whirl", "values": [40, 70, 100], "step": 25},
+	{"id": "twin_home", "weapon": "twin", "name": "Homeward Crescent", "desc": "The crescent flies back to you, cutting for %d%% damage.", "stat": "w_return", "values": [60, 90, 130], "step": 30},
+	{"id": "twin_step", "weapon": "twin", "name": "Moonlit Step", "desc": "Dashing slashes foes you pass for %d.", "stat": "w_dash_strike", "values": [14, 22, 32], "step": 8},
+	{"id": "twin_quick", "weapon": "twin", "name": "Quickened Edges", "desc": "Attack %d%% faster.", "stat": "w_speed", "values": [12, 20, 30], "step": 6},
+	{"id": "bow_pierce", "weapon": "bow", "name": "Piercing Fletch", "desc": "Arrows pierce %d more foes.", "stat": "w_pierce", "values": [1, 2, 3], "step": 1},
+	{"id": "bow_split", "weapon": "bow", "name": "Split Shot", "desc": "Fully drawn shots split into %d extra arrows.", "stat": "w_split", "values": [2, 2, 4], "step": 1},
+	{"id": "bow_draw", "weapon": "bow", "name": "Quick Draw", "desc": "Draw %d%% faster.", "stat": "w_charge", "values": [25, 40, 60], "step": 15},
+	{"id": "bow_rain", "weapon": "bow", "name": "Endless Rain", "desc": "The volley lands %d more waves.", "stat": "w_pulses", "values": [1, 2, 3], "step": 1},
+	{"id": "shield_rebound", "weapon": "shield", "name": "Rebound Rim", "desc": "The thrown shield ricochets to %d more foes.", "stat": "w_ricochet", "values": [1, 2, 3], "step": 1},
+	{"id": "shield_anchor", "weapon": "shield", "name": "Anchored Aegis", "desc": "The thrown shield lodges at the aimed point and spins there +%.1f s, then ricochets home.", "stat": "w_anchor", "values": [2.5, 3.5, 4.5], "step": 1.0},
+	{"id": "shield_rush", "weapon": "shield", "name": "Vanguard Rush", "desc": "The rushing third strike deals +%d%% damage and goes farther.", "stat": "w_rush", "values": [40, 70, 100], "step": 25},
+	{"id": "shield_guard", "weapon": "shield", "name": "Sunlit Guard", "desc": "Take %d%% less damage.", "stat": "armor", "values": [6, 10, 15], "step": 4},
+	{"id": "scythe_chain", "weapon": "scythe", "name": "Longer Chain", "desc": "Sweeps reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40], "step": 10},
+	{"id": "scythe_hook", "weapon": "scythe", "name": "Hooked Edge", "desc": "Every sweep drags foes toward you (+%d pull).", "stat": "w_yank", "values": [1, 1, 2], "step": 1},
+	{"id": "scythe_maw", "weapon": "scythe", "name": "Hungry Maw", "desc": "The vortex lasts %d%% longer and pulls harder.", "stat": "w_whirl", "values": [40, 70, 100], "step": 25},
+	{"id": "scythe_soul", "weapon": "scythe", "name": "Soulreap", "desc": "Heal %d for each foe the vortex catches.", "stat": "w_soul", "values": [1, 2, 3], "step": 1},
 ]
 ## Rewards offered on the exits of a cleared chamber (granted when the NEXT chamber is cleared).
 const REWARDS := {
@@ -307,8 +308,14 @@ func boon_by_id(id: String) -> Dictionary:
 			return b
 	return {}
 
+## owned: hero.boons (id -> {level, rarity}). A card already owned comes back as its next level
+## (rarity never drops); a card at CARD_MAX_LEVEL is no longer offered.
+## Each choice: {id, rarity, level (the level it becomes), upgrade, from_rarity}.
 func roll_boons(rng: RandomNumberGenerator, owned: Dictionary, count := 3) -> Array:
-	var pool := BOONS.duplicate()
+	var pool := []
+	for b in BOONS:
+		if int(owned.get(b["id"], {}).get("level", 0)) < CARD_MAX_LEVEL:
+			pool.append(b)
 	var out := []
 	while out.size() < count and pool.size() > 0:
 		var b: Dictionary = pool.pop_at(rng.randi_range(0, pool.size() - 1))
@@ -316,13 +323,39 @@ func roll_boons(rng: RandomNumberGenerator, owned: Dictionary, count := 3) -> Ar
 		var roll := rng.randf()
 		if roll > 0.9: r = 2
 		elif roll > 0.65: r = 1
-		var lvl: int = owned.get(b["id"], {}).get("level", 0)
-		out.append({"id": b["id"], "rarity": r, "upgrade": lvl > 0})
+		out.append(_choice(b["id"], r, owned.get(b["id"], {})))
 	return out
 
-func boon_text(id: String, rarity: int) -> String:
-	var b := boon_by_id(id)
-	return b["desc"] % b["values"][rarity]
+const CARD_MAX_LEVEL := 3
+
+func _choice(id: String, r: int, have: Dictionary) -> Dictionary:
+	var lvl := int(have.get("level", 0))
+	var fr := int(have.get("rarity", 0))
+	return {"id": id, "rarity": maxi(r, fr) if lvl > 0 else r, "level": lvl + 1, "upgrade": lvl > 0, "from_rarity": fr}
+
+## The stat a card adds at this rarity and level: values[rarity] at Level I, + step per further level.
+func card_value(def: Dictionary, rarity: int, level := 1) -> Variant:
+	if def.is_empty():
+		return 0
+	var base = def["values"][clampi(rarity, 0, 2)]
+	var step = def.get("step", base)
+	return base + step * maxi(0, clampi(level, 1, CARD_MAX_LEVEL) - 1)
+
+## Card description for rarity/level. With from_level > 0 it reads like an upgrade: "+40 → +55".
+func card_text(def: Dictionary, rarity: int, level := 1, from_level := 0, from_rarity := 0) -> String:
+	if def.is_empty():
+		return ""
+	var desc := String(def["desc"])
+	var spec := "%.1f" if desc.contains("%.1f") else "%d"
+	var now := spec % card_value(def, rarity, level)
+	if from_level <= 0:
+		return desc % card_value(def, rarity, level)
+	var was := spec % card_value(def, from_rarity, from_level)
+	var at := desc.find(spec)
+	return desc.substr(0, at).replace("%%", "%") + "%s → %s" % [was, now] + desc.substr(at + spec.length()).replace("%%", "%")
+
+func boon_text(id: String, rarity: int, level := 1) -> String:
+	return card_text(boon_by_id(id), rarity, level)
 
 
 # ---------------------------------------------------------------- weapons / aspects / forge
@@ -388,17 +421,25 @@ func forge_by_id(id: String) -> Dictionary:
 			return f
 	return {}
 
-func forge_text(id: String, rarity: int) -> String:
-	var f := forge_by_id(id)
-	if f.is_empty():
-		return ""
-	return f["desc"] % f["values"][clampi(rarity, 0, 2)]
+func forge_text(id: String, rarity: int, level := 1) -> String:
+	return card_text(forge_by_id(id), rarity, level)
 
-## owned: hero.boons["_forge"] (id -> {level, rarity}).
-func roll_forge(rng: RandomNumberGenerator, weapon: String, owned: Dictionary, count := 3) -> Array:
+## False for a forge card that would do nothing with this weapon + aspect
+## (e.g. Piercing Fletch under Aspect of the Gale, whose drawn shots already pierce every foe and whose
+## quick shots are already at the pierce cap).
+func forge_useful(f: Dictionary, weapon: String, aspect: int) -> bool:
+	if f["weapon"] != weapon:
+		return false
+	var mods: Dictionary = aspect_def(weapon, aspect).get("mods", {})
+	if f["stat"] == "w_pierce" and float(mods.get("w_pierce", 0.0)) >= 3.0:
+		return false
+	return true
+
+## owned: hero.boons["_forge"] (id -> {level, rarity}). aspect: the hero's aspect (filters useless cards).
+func roll_forge(rng: RandomNumberGenerator, weapon: String, owned: Dictionary, count := 3, aspect := 0) -> Array:
 	var pool := []
 	for f in FORGE:
-		if f["weapon"] == weapon:
+		if forge_useful(f, weapon, aspect) and int(owned.get(f["id"], {}).get("level", 0)) < CARD_MAX_LEVEL:
 			pool.append(f)
 	var out := []
 	while out.size() < count and pool.size() > 0:
@@ -407,8 +448,9 @@ func roll_forge(rng: RandomNumberGenerator, weapon: String, owned: Dictionary, c
 		var roll := rng.randf()
 		if roll > 0.88: r = 2
 		elif roll > 0.6: r = 1
-		var lvl: int = owned.get(f["id"], {}).get("level", 0)
-		out.append({"id": f["id"], "rarity": r, "upgrade": lvl > 0, "forge": true})
+		var c := _choice(f["id"], r, owned.get(f["id"], {}))
+		c["forge"] = true
+		out.append(c)
 	return out
 
 ## Two different reward types for the exits out of chamber `room` (deterministic: same on every device).

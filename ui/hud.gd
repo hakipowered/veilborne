@@ -263,7 +263,7 @@ func _show_tooltip(id: String, level: int, rarity: int, at: Control, forge := fa
 	var r := VTheme.label("%s  ·  %s" % [String(Game.RARITY_NAMES[rarity]).to_upper(), String(pat.get("name", "")).to_upper()], "Caps", 13)
 	r.add_theme_color_override("font_color", Game.RARITY_COLORS[rarity])
 	v.add_child(r)
-	var d := VTheme.label(Game.boon_text(id, rarity) if not forge else Game.forge_text(id, rarity), "Body", 19)
+	var d := VTheme.label(Game.boon_text(id, rarity, level) if not forge else Game.forge_text(id, rarity, level), "Body", 19)
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.custom_minimum_size = Vector2(270, 0)
 	v.add_child(d)
@@ -769,7 +769,10 @@ func _boon_card(c: Dictionary, _hero: Node) -> Button:
 	v.add_child(rl)
 	var dv := VTheme.divider(220, 22)
 	v.add_child(dv)
-	var d := VTheme.label(Game.boon_text(String(c["id"]), r) if not forge else Game.forge_text(String(c["id"]), r), "Body", 21)
+	# an owned card comes back as its next level: show the value it has now → the value it will have
+	var lvl := int(c.get("level", 2 if bool(c.get("upgrade", false)) else 1))
+	var up_from := lvl - 1 if bool(c.get("upgrade", false)) else 0
+	var d := VTheme.label(Game.card_text(b, r, lvl, up_from, int(c.get("from_rarity", r))), "Body", 21)
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	d.custom_minimum_size = Vector2(236, 0)
@@ -782,7 +785,7 @@ func _boon_card(c: Dictionary, _hero: Node) -> Button:
 		up.size = Vector2(220, 44)
 		up.custom_minimum_size = Vector2(220, 44)
 		btn.add_child(up)
-		var ul := VTheme.title_label("▲  UPGRADE  ▲", 16, Color(0.75, 1.0, 0.6), 5, "caps")
+		var ul := VTheme.title_label("LEVEL %s  →  %s" % [VTheme.roman(up_from), VTheme.roman(lvl)], 16, Color(0.75, 1.0, 0.6), 5, "caps")
 		up.add_child(ul)
 		var ut := ul.create_tween().set_loops()
 		ut.tween_property(ul, "modulate", Color(1.3, 1.3, 1.1), 0.6)
