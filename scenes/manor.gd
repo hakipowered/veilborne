@@ -345,7 +345,8 @@ func _build_backdrop() -> void:
 	far.texture = _tex(ENV + "hollow/abyss.webp")
 	far.position = Vector2(0, -400)
 	far.scale = Vector2(6.0, 6.0)
-	far.modulate = Color(0.22, 0.16, 0.22)
+	far.modulate = Color(0.09, 0.06, 0.09)
+	far.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	far.z_index = -100
 	add_child(far)
 	var pit := Sprite2D.new()

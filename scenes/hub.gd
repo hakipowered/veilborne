@@ -247,7 +247,11 @@ func _build_stations() -> void:
 
 
 func _npc(id: String, gpos: Vector2, actions: Array, flip: bool) -> void:
-	var tex := VTheme.portrait_tex(id)
+	var tex: Texture2D = VTheme.portrait_tex(id)
+	var h := NPC_H
+	if id == "ysolde": # painted full-body sprite (the portrait is a bust)
+		tex = load("res://art/env/manor/ysolde_full.png")
+		h = NPC_H * 1.12
 	var holder := Node2D.new()
 	holder.position = ManorScript.w(gpos.x, gpos.y)
 	var sh := Sprite2D.new()
@@ -258,7 +262,7 @@ func _npc(id: String, gpos: Vector2, actions: Array, flip: bool) -> void:
 	s.name = "Art"
 	s.texture = tex
 	s.centered = false
-	var sc := NPC_H / tex.get_height()
+	var sc := h / tex.get_height()
 	s.scale = Vector2(sc * (-1.0 if flip else 1.0), sc)
 	s.offset = Vector2(-tex.get_width() * 0.5, -tex.get_height() * 0.985)
 	if id == "corwin":
@@ -369,12 +373,6 @@ func _build_ui() -> void:
 	# interact prompt: right of centre, above the action buttons (clear of joystick and medallions)
 	_prompt_box = PanelContainer.new()
 	_prompt_box.theme_type_variation = "PanelSm"
-	_prompt_box.anchor_left = 0.5; _prompt_box.anchor_right = 0.5
-	_prompt_box.anchor_top = 1.0; _prompt_box.anchor_bottom = 1.0
-	_prompt_box.offset_left = 0; _prompt_box.offset_right = 0
-	_prompt_box.offset_top = -200; _prompt_box.offset_bottom = -200
-	_prompt_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_prompt_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_prompt_box.visible = false
 	root.add_child(_prompt_box)
 	var v := VBoxContainer.new()
@@ -394,8 +392,10 @@ func _fit_prompt() -> void:
 		return
 	# centred, its bottom edge above the dash / attack medallions (which sit in the last ~180 px)
 	var vs := get_viewport().get_visible_rect().size
-	_prompt_box.offset_bottom = -clampf(vs.y * 0.27, 190.0, 300.0)
-	_prompt_box.offset_top = _prompt_box.offset_bottom
+	_prompt_box.reset_size()
+	var sz := _prompt_box.get_combined_minimum_size()
+	_prompt_box.size = sz
+	_prompt_box.position = Vector2(roundf((vs.x - sz.x) * 0.5), vs.y - clampf(vs.y * 0.27, 190.0, 300.0) - sz.y)
 
 
 func _set_prompt_refresh() -> void:
@@ -409,14 +409,13 @@ func _set_prompt() -> void:
 	if _near.is_empty():
 		_prompt_box.visible = false
 		return
-	_fit_prompt()
 	_prompt_box.visible = true
 	_prompt_title.text = String(_near["title"]).to_upper()
 	var first := true
 	for a in _near["actions"]:
 		var label := String(ACTION_NAMES.get(a, a.capitalize()))
 		if a == "gift":
-			label = "Gift · %d gold" % GIFT_COST
+			label = "Gift (%d gold)" % GIFT_COST
 		var b := Button.new()
 		b.text = ("[E] " if first and not _touch_ui() else "") + label
 		b.theme_type_variation = "SmallButton"
@@ -429,7 +428,8 @@ func _set_prompt() -> void:
 		VTheme.juice(b, 1.05, "click")
 		_prompt.add_child(b)
 		first = false
-	_prompt_box.reset_size()
+	_fit_prompt()
+	_fit_prompt.call_deferred()
 	_prompt_box.modulate.a = 0.0
 	_prompt_box.create_tween().tween_property(_prompt_box, "modulate:a", 1.0, 0.15)
 
