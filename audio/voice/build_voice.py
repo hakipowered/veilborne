@@ -4,6 +4,7 @@
 Lines come from data/story.gd (Story.BARKS and Story.NARRATION); this file never copies the text.
 
   python3 audio/voice/build_voice.py texts            # every line with its TTS voice + emotion tags (JSON)
+  python3 audio/voice/build_voice.py takes            # the same, one take per speaker/context (JSON)
   python3 audio/voice/build_voice.py process RAW_DIR  # raw takes -> mastered OGG, then rewrites index.gd
   python3 audio/voice/build_voice.py index            # only rewrite index.gd from the OGGs on disk
 
@@ -28,20 +29,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 VOICE_DIR = os.path.join(ROOT, "audio", "voice")
 STORY = os.path.join(ROOT, "data", "story.gd")
 
-# One ElevenLabs voice per speaker, kept for every line of that speaker.
-# NOTE: the auditions could not be run (fal.ai credit ran out); these are the planned picks and the
-# audition alternates. Audition the alternates on the first line listed, then fix the choice here.
+# One ElevenLabs voice per speaker, kept for every line of that speaker (ElevenLabs v3 via fal).
+# Auditioned on one line each (2 candidates per speaker); picks made on pitch / pace measurements:
+#   oriel   Lily      (Alice kept for the narrator)      mireth   Bill   (lower and slower than George)
+#   vessa   Jessica   (brightest of Jessica / Laura)     sable    Charlotte (low, sly; Lily taken by Oriel)
+#   narrator Alice    (steadier, drier than Matilda)
 CAST = {
-    "oriel":    {"voice": "Alice",   "alternates": ["Lily", "Charlotte"], "stability": 0.4,
-                 "style": "[Scottish accent] [booming]", "speed": 1.0},
-    "vessa":    {"voice": "Jessica", "alternates": ["Laura", "Sarah"], "stability": 0.3,
-                 "style": "[Irish accent] [excited]", "speed": 1.12},
-    "mireth":   {"voice": "Bill",    "alternates": ["George", "Callum"], "stability": 0.5,
-                 "style": "[West Country accent] [worried]", "speed": 0.9},
-    "sable":    {"voice": "Lily",    "alternates": ["Charlotte", "Alice"], "stability": 0.4,
-                 "style": "[London accent] [sly]", "speed": 1.0},
-    "narrator": {"voice": "Matilda", "alternates": ["Alice", "Lily"], "stability": 0.5,
-                 "style": "[Yorkshire accent] [dry]", "speed": 0.95},
+    "oriel":    {"voice": "Lily",      "stability": 0.4, "style": "[Scottish accent] [booming]", "speed": 1.0},
+    "vessa":    {"voice": "Jessica",   "stability": 0.3, "style": "[Irish accent] [excited]", "speed": 1.12},
+    "mireth":   {"voice": "Bill",      "stability": 0.5, "style": "[West Country accent] [worried]", "speed": 0.9},
+    "sable":    {"voice": "Charlotte", "stability": 0.4, "style": "[London accent] [sly]", "speed": 1.0},
+    "narrator": {"voice": "Alice",     "stability": 0.5, "style": "[Yorkshire accent] [dry]", "speed": 0.95},
 }
 # Extra emotion tags per context (ElevenLabs v3 acts them out; they are not spoken).
 CONTEXT_TAGS = {
@@ -114,6 +112,20 @@ def cmd_texts() -> None:
     print()
 
 
+def cmd_takes() -> None:
+    """One TTS job per speaker/context: every line in order, [long pause] between (see split_take)."""
+    lines = load_lines()
+    jobs = []
+    for spk, ctxs in lines.items():
+        cast = CAST[spk]
+        for ctx, arr in ctxs.items():
+            text = "\n\n[long pause]\n\n".join(tts_text(spk, ctx, t) for t in arr)
+            jobs.append({"out": "%s/%s.mp3" % (spk, ctx), "voice": cast["voice"], "model": "v3",
+                         "stability": cast["stability"], "speed": cast["speed"], "lines": len(arr), "text": text})
+    json.dump(jobs, sys.stdout, indent=1, ensure_ascii=False)
+    print()
+
+
 def _run(args: list) -> str:
     r = subprocess.run(args, capture_output=True, text=True)
     if r.returncode != 0:
@@ -140,16 +152,24 @@ def master(src: str, dst: str) -> None:
           "-ac", "1", "-ar", "44100", "-c:a", "libvorbis", "-b:a", BITRATE, dst])
 
 
+def _duration(path: str) -> float:
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                       capture_output=True, text=True)
+    return float(r.stdout.strip() or 0)
+
+
 def split_take(src: str, count: int, tmpdir: str) -> list:
     """Splits one take holding `count` lines at its count-1 longest silences."""
     if count == 1:
         return [src]
     log = _run(["ffmpeg", "-hide_banner", "-nostats", "-i", src, "-af",
                 "silencedetect=noise=-40dB:d=0.25", "-f", "null", "-"])
+    dur = _duration(src)
     starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", log)]
     ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", log)]
-    gaps = sorted(zip(starts, ends), key=lambda g: g[1] - g[0], reverse=True)
-    gaps = [g for g in gaps if g[0] > 0.05][:count - 1]
+    # only pauses between speech: drop leading and trailing silence
+    gaps = [g for g in zip(starts, ends) if g[0] > 0.05 and g[1] < dur - 0.05]
+    gaps = sorted(gaps, key=lambda g: g[1] - g[0], reverse=True)[:count - 1]
     if len(gaps) < count - 1:
         raise RuntimeError("%s: found %d pauses, need %d" % (src, len(gaps), count - 1))
     cuts = sorted((a + b) / 2 for a, b in gaps)
@@ -221,6 +241,8 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     if a[:1] == ["texts"]:
         cmd_texts()
+    elif a[:1] == ["takes"]:
+        cmd_takes()
     elif a[:1] == ["process"] and len(a) == 2:
         cmd_process(a[1])
     elif a[:1] == ["index"]:
