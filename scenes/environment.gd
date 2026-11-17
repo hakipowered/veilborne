@@ -20,6 +20,7 @@ signal debris_impact(pos: Vector2, radius: float, damage: float) ## a falling-de
 signal prop_broken(id: int, pos: Vector2)                        ## break_prop() shattered a breakable
 
 const ENV := "res://art/env/"
+const Layouts := preload("res://scenes/room_layouts.gd") ## irregular chamber shapes (templates, field, collision)
 const MAX_LIGHTS := 16
 const SHADER_LIGHTS := 6
 const ISO := 0.53 ## floor y squash for top-down art laid on the iso floor
@@ -171,21 +172,6 @@ const LAYOUTS := {
 	],
 }
 
-## Island outlines in VISUAL diamond units (x / vhalf.x, y / vhalf.y). The back walls run straight from
-## L' (wl along T->L) through T to R' (wr along T->R); "front" lists the outline from R' round to L'.
-## "start" is the heroes' entry point in playable units.
-const SHAPES := {
-	"diamond": {"wl": 1.0, "wr": 1.0, "front": [[0.5, 0.5], [0.0, 1.0], [-0.5, 0.5]], "start": [0.0, 0.62]},
-	"cross": {"wl": 1.0, "wr": 1.0, "front": [[0.72, 0.28], [0.44, 0.22], [0.30, 0.70], [0.0, 1.0], [-0.30, 0.70],
-		[-0.44, 0.22], [-0.72, 0.28]], "start": [0.0, 0.66]},
-	"horseshoe": {"wl": 1.0, "wr": 1.0, "front": [[0.66, 0.34], [0.38, 0.42], [0.16, 0.30], [0.0, 0.34], [-0.16, 0.30],
-		[-0.38, 0.42], [-0.66, 0.34]], "start": [0.0, 0.12]},
-	"wide": {"wl": 0.8, "wr": 0.8, "front": [[0.92, 0.04], [0.66, 0.32], [0.34, 0.6], [0.0, 0.86], [-0.34, 0.6],
-		[-0.66, 0.32], [-0.92, 0.04]], "start": [0.0, 0.6]},
-	"arena": {"wl": 0.86, "wr": 0.86, "front": [[0.96, 0.02], [0.74, 0.25], [0.44, 0.54], [0.0, 0.92], [-0.44, 0.54],
-		[-0.74, 0.25], [-0.96, 0.02]], "start": [0.0, 0.66]},
-}
-
 ## Chapter room layouts. props: [kind or "a|b" alternatives, u, v, (optional) 0 = no jitter].
 ## water / lava / pits: [u, v, radius px]; channels: lava polylines [[u, v], ...]; spikes: [u, v];
 ## debris: [u, v, radius px]; breakables: [kind, u, v] (a seeded subset is placed).
@@ -314,6 +300,12 @@ var half := Vector2(1050, 560)   ## playable diamond half extents
 var vhalf := Vector2(1140, 608)  ## visual floor half extents
 var wall_h := 640.0
 var force_variant := -1          ## tests / tools: pick a layout variant instead of the seeded one
+var room_kind := ""              ## set by the arena before build(): combat | elite | boss | shop / reward (small rooms)
+var force_shape := ""            ## tests / tools: a room_layouts.gd template id instead of the seeded one
+var shape_id := ""               ## template of the current chamber
+var _shape: RefCounted           ## room_layouts.gd instance: floor field, outlines, walls, flow field
+var _arch_spot := Vector2.ZERO   ## classic rooms: floor spot for the arena's own exit arch
+var _sigil_c := Vector2.ZERO
 var _variant := 0
 var _layout: Dictionary = {}
 var _legacy := true
@@ -330,16 +322,6 @@ var _lit := 0.0
 var _wave := 1.0
 var _tween: Tween
 
-var _island := PackedVector2Array()   ## visual island outline (world)
-var _walk := PackedVector2Array()     ## playable outline (world)
-var _walk_g := PackedVector2Array()   ## playable outline in ground space (y * 2)
-var _deep := PackedByteArray()        ## coarse grid: 1 = cell lies deep inside the walkable area
-var _deep_org := Vector2.ZERO
-var _deep_cell := 64.0
-var _deep_w := 0
-var _deep_h := 0
-var _wl := 1.0
-var _wr := 1.0
 
 var _hazards: Array = []
 var _spike_nodes: Array = []     ## [hazard index, spike trap node (scenes/spike_trap.gd), phase]
@@ -429,6 +411,7 @@ func build(p_floor_key: String, p_room_index: int, seed_value: int, exits := -1)
 	else:
 		half = Vector2(1050, 560)
 		wall_h = 640.0
+	_pick_shape(boss, seed_value)
 	if exits < 0:
 		if floor_key == "throne" or floor_key == "hollow_boss":
 			exits = 0
@@ -439,8 +422,8 @@ func build(p_floor_key: String, p_room_index: int, seed_value: int, exits := -1)
 	_exits = clampi(exits, 0, 2)
 	_has_gate = _exits > 0
 	theme = THEMES[theme_id]
-	var m := 90.0
-	vhalf = Vector2(half.x + m, half.y + m * half.y / half.x)
+	vhalf = Vector2(maxf(-_shape.bounds.position.x, _shape.bounds.end.x), maxf(-_shape.bounds.position.y, _shape.bounds.end.y))
+	half = vhalf - Vector2(60.0, 32.0)
 	_door_open = false
 	_door_t = 0.0
 	_lit = 0.0
@@ -492,8 +475,7 @@ func get_door_positions() -> Array:
 	for d in _doors:
 		a.append(d["pos"])
 	if _legacy and _doors.size() == 1:
-		var side := -1.0 if posmod(room_index, 2) == 0 else 1.0
-		a.append(Vector2(side * half.x * 0.3, -half.y * 0.52))
+		a.append(_arch_spot)
 	return a
 
 ## Number of exits drawn by the environment itself (painted gates). Entries of get_door_positions()
@@ -657,17 +639,10 @@ func add_ysorted_props_to(parent: Node2D) -> void:
 			p.get_parent().remove_child(p)
 		parent.add_child(p)
 
-## Clamp into the walkable island + push out of solid props and pits. Radius 0 probes (projectiles)
-## ignore pits so shots fly over the void.
+## Clamp onto the chamber floor + push out of solid props and pits. Radius 0 probes (projectiles)
+## ignore pits and chasms so shots fly over the void inside the room (not past its outer edge).
 func resolve(pos: Vector2, radius: float) -> Vector2:
-	if _legacy:
-		var w := half.x - radius
-		var hh := half.y - radius * 0.5
-		var k := absf(pos.x) / w + absf(pos.y) / hh
-		if k > 1.0:
-			pos /= k
-	else:
-		pos = _clamp_island(pos, radius)
+	pos = _shape.resolve(pos, radius)
 	for o in _obstacles:
 		if radius <= 0.0 and o.has("pit"):
 			continue
@@ -686,7 +661,8 @@ func resolve(pos: Vector2, radius: float) -> Vector2:
 
 ## World rect the camera may show without leaving painted space (optional camera limits).
 func get_camera_limits() -> Rect2:
-	return Rect2(-vhalf.x - 700.0, -vhalf.y - wall_h, (vhalf.x + 700.0) * 2.0, vhalf.y * 2.0 + wall_h + 500.0)
+	var b: Rect2 = _shape.bounds
+	return Rect2(b.position.x - 700.0, b.position.y - wall_h, b.size.x + 1400.0, b.size.y + wall_h + 500.0)
 
 ## Optional low-end mode: plain backdrop (no mist shader), 3 shader lights, half the particles, no vignette,
 ## no heat shimmer (the only screen read), calmer water. Call after build(); persists for later builds.
@@ -912,142 +888,38 @@ func _apply_dynamic() -> void:
 		_lights_a[_sigil_light] = Vector4(s.x, s.y, s.z, 0.15 + 0.55 * _lit)
 	_push_lights()
 
-# --------------------------------------------------------------- island outline + walkable area
+# --------------------------------------------------------------- chamber shape (scenes/room_layouts.gd)
+func _pick_shape(boss: bool, seed_value: int) -> void:
+	var kind := "boss" if boss else "combat"
+	match room_kind:
+		"elite":
+			kind = "elite"
+		"shop", "reward", "rest", "fountain", "small", "story":
+			kind = "small"
+	shape_id = force_shape if Layouts.TEMPLATES.has(force_shape) else Layouts.pick(kind, seed_value - room_index, room_index)
+	_shape = Layouts.new()
+	_shape.build(shape_id, _rng, wall_h + 60.0)
+
 func _build_island() -> void:
-	var sh: Dictionary = SHAPES[_layout.get("shape", "diamond")]
-	_wl = sh["wl"]
-	_wr = sh["wr"]
-	var T := Vector2(0, -vhalf.y)
-	var lp := T.lerp(Vector2(-vhalf.x, 0), _wl)
-	var rp := T.lerp(Vector2(vhalf.x, 0), _wr)
-	var pts := PackedVector2Array([lp, T, rp])
-	if _legacy:
-		pts.append(Vector2(0, vhalf.y))
-	else:
-		var chain: Array = [rp]
-		for p in sh["front"]:
-			chain.append(Vector2(p[0] * vhalf.x, p[1] * vhalf.y))
-		chain.append(lp)
-		var ph := _rng.randf() * 10.0
-		for i in range(chain.size() - 1):
-			var a: Vector2 = chain[i]
-			var b: Vector2 = chain[i + 1]
-			var steps := maxi(2, int(a.distance_to(b) / 60.0))
-			var nrm := (b - a).orthogonal().normalized()
-			for s in range(1 if i == 0 else 0, steps):
-				var t := float(s) / steps
-				var p := a.lerp(b, t)
-				var fade := 1.0
-				if i == 0:
-					fade = clampf(t * 4.0, 0.0, 1.0)
-				elif i == chain.size() - 2:
-					fade = clampf((1.0 - t) * 4.0, 0.0, 1.0)
-				var j := (sin(p.x * 0.013 + ph) * 0.6 + sin(p.y * 0.031 + ph * 2.0) * 0.4) * 24.0 + _rng.randf_range(-9.0, 9.0)
-				pts.append(p + nrm * j * fade)
-	_island = pts
-	if _legacy:
-		_start = Vector2(0, half.y * 0.6)
-		_walk = PackedVector2Array([Vector2(-half.x, 0), Vector2(0, -half.y), Vector2(half.x, 0), Vector2(0, half.y)])
-		_walk_g = PackedVector2Array()
-		return
-	# walkable: inset by the same margin as the classic diamond
-	var best := PackedVector2Array()
-	var best_a := 0.0
-	for poly in Geometry2D.offset_polygon(_island, -86.0, Geometry2D.JOIN_ROUND):
-		var a := absf(_poly_area(poly))
-		if a > best_a:
-			best_a = a
-			best = poly
-	_walk = _simplify(best, 18.0)
-	_walk_g = PackedVector2Array()
-	for p in _walk:
-		_walk_g.append(Vector2(p.x, p.y * 2.0))
-	_build_deep_grid()
-	var st: Array = sh["start"]
-	_start = _clamp_island(Vector2(st[0] * half.x, st[1] * half.y), 60.0)
+	_start = _shape.start
 
-func _poly_area(p: PackedVector2Array) -> float:
-	var a := 0.0
-	for i in range(p.size()):
-		var j := (i + 1) % p.size()
-		a += p[i].x * p[j].y - p[j].x * p[i].y
-	return a * 0.5
-
-func _simplify(p: PackedVector2Array, min_d: float) -> PackedVector2Array:
-	var o := PackedVector2Array()
-	for q in p:
-		if o.is_empty() or o[o.size() - 1].distance_to(q) >= min_d:
-			o.append(q)
-	return o
-
-## Outward unit normal of island edge a->b (robust to winding and concave notches).
-func _outward(a: Vector2, b: Vector2) -> Vector2:
-	var n := (b - a).orthogonal().normalized()
-	if Geometry2D.is_point_in_polygon((a + b) * 0.5 + n * 4.0, _island):
-		n = -n
-	return n
-
-## Coarse grid of cells lying more than 70 px (ground space) inside the walkable outline: resolve()
-## skips the polygon test there, which covers most calls.
-func _build_deep_grid() -> void:
-	_deep_org = Vector2(-vhalf.x, -vhalf.y)
-	_deep_w = int(ceil(vhalf.x * 2.0 / _deep_cell))
-	_deep_h = int(ceil(vhalf.y * 2.0 / _deep_cell))
-	_deep = PackedByteArray()
-	_deep.resize(_deep_w * _deep_h)
-	for j in range(_deep_h):
-		for i in range(_deep_w):
-			var c := _deep_org + Vector2((i + 0.5) * _deep_cell, (j + 0.5) * _deep_cell)
-			var ok := Geometry2D.is_point_in_polygon(c, _walk)
-			if ok:
-				ok = _edge_dist_g(Vector2(c.x, c.y * 2.0)) > 70.0 + _deep_cell * 1.2
-			_deep[j * _deep_w + i] = 1 if ok else 0
-
-func _edge_dist_g(g: Vector2) -> float:
-	var best := INF
-	var n := _walk_g.size()
-	for i in range(n):
-		var q := Geometry2D.get_closest_point_to_segment(g, _walk_g[i], _walk_g[(i + 1) % n])
-		best = minf(best, g.distance_squared_to(q))
-	return sqrt(best)
-
+## Signed ground distance to the floor edge is in _shape; these keep the old helpers' meaning.
 func _clamp_island(pos: Vector2, radius: float) -> Vector2:
-	if _walk_g.size() < 3:
-		return pos
-	var i := int(floor((pos.x - _deep_org.x) / _deep_cell))
-	var j := int(floor((pos.y - _deep_org.y) / _deep_cell))
-	if radius <= 70.0 and i >= 0 and j >= 0 and i < _deep_w and j < _deep_h and _deep[j * _deep_w + i] == 1:
-		return pos
-	for _it in range(2):
-		var g := Vector2(pos.x, pos.y * 2.0)
-		var inside := Geometry2D.is_point_in_polygon(g, _walk_g)
-		var best := INF
-		var bq := g
-		var n := _walk_g.size()
-		for k in range(n):
-			var q := Geometry2D.get_closest_point_to_segment(g, _walk_g[k], _walk_g[(k + 1) % n])
-			var d := g.distance_squared_to(q)
-			if d < best:
-				best = d
-				bq = q
-		var dist := sqrt(best)
-		if inside and dist >= radius:
-			return pos
-		var dir := (g - bq) / maxf(dist, 0.001)
-		if not inside:
-			dir = -dir
-		if dist < 0.001:
-			dir = -g.normalized()
-		g = bq + dir * maxf(radius, 0.5)
-		pos = Vector2(g.x, g.y * 0.5)
-	return pos
+	return _shape.resolve(pos, radius)
 
 func _inside_island(p: Vector2, margin := 0.0) -> bool:
-	if _legacy:
-		return absf(p.x) / half.x + absf(p.y) / half.y < 1.05 - margin / half.x
-	if not Geometry2D.is_point_in_polygon(p, _walk):
-		return false
-	return margin <= 0.0 or _edge_dist_g(Vector2(p.x, p.y * 2.0)) >= margin
+	return _shape.on_floor(p, maxf(margin, 0.0) + 24.0)
+
+## Direction for a walker heading for `target`: `move` itself when the straight line is walkable,
+## otherwise turned down the flow field round chasms, void and props (same length).
+func steer(pos: Vector2, target: Vector2, move: Vector2, radius := 16.0) -> Vector2:
+	if _shape == null or move.length_squared() < 1.0 or (target - pos).dot(move) <= 0.0:
+		return move
+	# round chasms, void and props: down the flow field
+	if _shape.line_clear(pos, target, minf(radius, 30.0)):
+		return move
+	var d: Vector2 = _shape.flow_dir(pos, target, radius)
+	return move if d == Vector2.ZERO else d * move.length()
 
 # --------------------------------------------------------------- backdrop / void
 func _build_backdrop() -> void:
@@ -1078,29 +950,25 @@ func _build_rims() -> void:
 	var depth := 520.0 if (floor_key == "throne" or floor_key.ends_with("_boss")) else 430.0
 	var rep_w := float(tex.get_width()) * depth / float(tex.get_height())
 	var ts := tex.get_size() # Polygon2D UVs are in texture pixels
-	# front-facing runs of the island outline get a painted cliff face hanging into the void
-	var n := _island.size()
+	# every front-facing edge (outer rim and the far side of each chasm) gets a painted cliff face
 	var verts := PackedVector2Array()
 	var uvs := PackedVector2Array()
 	var cols := PackedColorArray()
 	var polys: Array = []
 	var u := 0.0
 	var prev_ok := false
-	for i in range(n):
-		var a := _island[i]
-		var b := _island[(i + 1) % n]
-		var nrm := _outward(a, b)
-		if nrm.y <= 0.05:
+	for e in _shape.edges:
+		var a: Vector2 = e["a"]
+		var b: Vector2 = e["b"]
+		var nrm: Vector2 = e["n"]
+		if e["type"] != "cliff":
 			prev_ok = false
 			continue
-		if not prev_ok and not _legacy:
+		if not prev_ok:
 			u = _rng.randf() * 2.0
 		var shade := lerpf(0.62, 0.86, clampf(0.5 - nrm.x * 0.7, 0.0, 1.0))
-		var d0 := depth
-		var d1 := depth
-		if not _legacy:
-			d0 *= 0.9 + 0.2 * sin(a.x * 0.01)
-			d1 *= 0.9 + 0.2 * sin(b.x * 0.01)
+		var d0 := depth * (0.9 + 0.2 * sin(a.x * 0.01))
+		var d1 := depth * (0.9 + 0.2 * sin(b.x * 0.01))
 		var u1 := u + a.distance_to(b) / rep_w
 		var k := verts.size()
 		verts.append_array([a, b, b + Vector2(0, d1), a + Vector2(0, d0)])
@@ -1137,15 +1005,17 @@ func _build_rims() -> void:
 # --------------------------------------------------------------- floor
 func _build_floor() -> void:
 	var p := Polygon2D.new()
-	p.polygon = _island
+	p.polygon = _shape.fill_verts
+	p.polygons = _shape.fill_polys
 	p.z_index = -70
 	_floor_mat = _shader("floor")
 	var throne := floor_key == "throne"
 	_floor_mat.set_shader_parameter("atlas", _art("floor"))
 	_floor_mat.set_shader_parameter("noise_tex", _noise)
 	_floor_mat.set_shader_parameter("sigil_tex", _art("sigil"))
-	_floor_mat.set_shader_parameter("iso", Vector2(104.0, 104.0 * half.y / half.x))
-	_floor_mat.set_shader_parameter("half_size", vhalf)
+	# slabs line up with the layout grid; the rim occlusion comes from _build_edge_shade (any shape)
+	_floor_mat.set_shader_parameter("iso", Vector2(Layouts.TW, Layouts.TH))
+	_floor_mat.set_shader_parameter("half_size", vhalf * 3.0)
 	var sc := Vector2(0, -half.y * 0.02)
 	var sr := 470.0
 	if _legacy:
@@ -1162,6 +1032,7 @@ func _build_floor() -> void:
 		elif theme_id == "regent":
 			sc = Vector2(0, half.y * 0.04)
 			sr = 560.0
+		sc = _sigil_spot()
 	else:
 		_floor_mat.set_shader_parameter("inset", 0.006)
 		_floor_mat.set_shader_parameter("seam_color", theme["seam"])
@@ -1184,32 +1055,24 @@ func _build_floor() -> void:
 	p.material = _floor_mat
 	add_child(p)
 	_sigil_light = _add_light(sc, theme["sigil_color"], sr * 1.25, 0.15, 0.0)
-	if not _legacy:
-		_build_edge_shade()
+	_build_edge_shade()
 
-## Keeps the sigil off pools and pits: the centre, unless something occupies it.
+## The sigil sits on solid floor near the middle of the chamber (hazards keep clear of it, see _fit_spot).
 func _sigil_spot() -> Vector2:
-	var c := Vector2(0, -half.y * 0.02)
-	for key in ["water", "lava", "pits"]:
-		for w in _layout.get(key, []):
-			var p := Vector2(w[0] * half.x, w[1] * half.y)
-			if p.distance_to(c) < w[2] + 120.0:
-				var alt := Vector2(0, half.y * 0.34)
-				return alt if Geometry2D.is_point_in_polygon(alt, _walk) else Vector2(0, -half.y * 0.42)
-	return c
+	_sigil_c = _shape.deepest(Vector2(0, -half.y * 0.02))
+	return _sigil_c
 
-## Ambient occlusion inside the island's front edges, and a lit lip along them (rim light).
+## Ambient occlusion inside the floor's front edges, and a lit lip along them (rim light).
 func _build_edge_shade() -> void:
-	var n := _island.size()
 	var verts := PackedVector2Array()
 	var cols := PackedColorArray()
 	var polys: Array = []
 	var lip := PackedVector2Array()
-	for i in range(n):
-		var a := _island[i]
-		var b := _island[(i + 1) % n]
-		var nrm := _outward(a, b)
-		if nrm.y <= 0.05:
+	for e in _shape.edges:
+		var a: Vector2 = e["a"]
+		var b: Vector2 = e["b"]
+		var nrm: Vector2 = e["n"]
+		if e["type"] == "wall" or nrm.y <= -0.2:
 			if lip.size() > 1:
 				_lip_line(lip)
 			lip = PackedVector2Array()
@@ -1217,12 +1080,14 @@ func _build_edge_shade() -> void:
 		var w := 90.0
 		var k := verts.size()
 		verts.append_array([a, b, b - nrm * w, a - nrm * w])
-		var c0 := Color(0, 0, 0, 0.5)
+		var c0 := Color(0, 0, 0, 0.5 if nrm.y > 0.05 else 0.32)
 		var c1 := Color(0, 0, 0, 0)
 		cols.append_array([c0, c0, c1, c1])
 		polys.append(PackedInt32Array([k, k + 1, k + 2, k + 3]))
-		if lip.is_empty():
-			lip.append(a)
+		if lip.is_empty() or lip[lip.size() - 1].distance_squared_to(a) > 1.0:
+			if lip.size() > 1:
+				_lip_line(lip)
+			lip = PackedVector2Array([a])
 		lip.append(b)
 	if lip.size() > 1:
 		_lip_line(lip)
@@ -1237,7 +1102,7 @@ func _lip_line(pts: PackedVector2Array) -> void:
 	var l := Line2D.new()
 	l.points = pts
 	l.width = 5.0
-	l.default_color = Color(theme["rim_light"], 0.45)
+	l.default_color = Color(theme.get("rim_light", Color(1.0, 0.82, 0.55)), 0.45 if not _legacy else 0.3)
 	l.joint_mode = Line2D.LINE_JOINT_ROUND
 	l.material = _additive()
 	l.z_index = -69
@@ -1248,30 +1113,56 @@ func _build_walls() -> void:
 	var throne := floor_key == "throne"
 	var tex := _art("wall")
 	var rep_w := float(tex.get_width()) * wall_h / float(tex.get_height())
-	var T := Vector2(0, -vhalf.y)
-	var L := T.lerp(Vector2(-vhalf.x, 0), _wl)
-	var R := T.lerp(Vector2(vhalf.x, 0), _wr)
+	var ts := tex.get_size() # Polygon2D UVs are in texture pixels
 	var up := Vector2(0, -wall_h)
-	var off := _rng.randf() * 0.5
-	for side in [[L, T, 0.95, Vector2(0.12, 0.0)], [T, R, 0.7, Vector2(0.0, 0.12)]]:
-		var a: Vector2 = side[0]
-		var b: Vector2 = side[1]
-		var u0 := off
-		var u1 := off + a.distance_to(b) / rep_w
+	_plan_gates()
+	var sk_v := PackedVector2Array()
+	var sk_c := PackedColorArray()
+	var sk_p: Array = []
+	# one painted facade per run of back edges (the room's back envelope), shaded by which way it faces
+	for ri in range(_shape.wall_runs.size()):
+		var run: PackedVector2Array = _shape.wall_runs[ri]
+		var nr: Array = _shape.wall_normals[ri]
+		var u0 := _rng.randf() * 0.5
+		var u := u0
+		var verts := PackedVector2Array()
+		var uvs := PackedVector2Array()
+		var cols := PackedColorArray()
+		var polys: Array = []
+		for k in range(run.size() - 1):
+			var a := run[k]
+			var b := run[k + 1]
+			var n: Vector2 = nr[k]
+			var u1 := u + a.distance_to(b) / rep_w
+			var sh := lerpf(0.7, 0.95, clampf(0.5 - n.x * 1.06, 0.0, 1.0))
+			var c := Color(sh, sh, sh, 1.0)
+			var i := verts.size()
+			verts.append_array([a + up, b + up, b, a])
+			uvs.append_array([Vector2(u, 0) * ts, Vector2(u1, 0) * ts, Vector2(u1, 1) * ts, Vector2(u, 1) * ts])
+			cols.append_array([c, c, c, c])
+			polys.append(PackedInt32Array([i, i + 1, i + 2, i + 3]))
+			# skirting shadow where the wall meets the floor
+			var j := sk_v.size()
+			sk_v.append_array([a, b, b - n * 70.0, a - n * 70.0])
+			sk_c.append_array([Color(0, 0, 0, 0.55), Color(0, 0, 0, 0.55), Color(0, 0, 0, 0), Color(0, 0, 0, 0)])
+			sk_p.append(PackedInt32Array([j, j + 1, j + 2, j + 3]))
+			u = u1
 		var p := Polygon2D.new()
-		p.polygon = PackedVector2Array([a + up, b + up, b, a])
-		var ts := tex.get_size() # Polygon2D UVs are in texture pixels
-		p.uv = PackedVector2Array([Vector2(u0, 0) * ts, Vector2(u1, 0) * ts, Vector2(u1, 1) * ts, Vector2(u0, 1) * ts])
+		p.polygon = verts
+		p.uv = uvs
+		p.vertex_colors = cols
+		p.polygons = polys
 		p.texture = tex
 		p.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 		p.z_index = -60
 		var m := _shader("wall")
 		m.set_shader_parameter("tex", tex)
 		m.set_shader_parameter("noise_tex", _noise)
-		m.set_shader_parameter("shade", side[2])
-		m.set_shader_parameter("span", u1)
+		m.set_shader_parameter("shade", 1.0)
+		m.set_shader_parameter("span", u)
 		m.set_shader_parameter("u_start", u0)
-		m.set_shader_parameter("end_fade", side[3])
+		var fade := clampf(110.0 / maxf(1.0, (u - u0) * rep_w), 0.02, 0.3)
+		m.set_shader_parameter("end_fade", Vector2(fade, fade))
 		m.set_shader_parameter("top_dark", 0.32)
 		if _legacy:
 			m.set_shader_parameter("glow_key", Color(0.45, 0.3, 1.0))
@@ -1283,21 +1174,112 @@ func _build_walls() -> void:
 		p.material = m
 		add_child(p)
 		_wall_mats.append(m)
-	# skirting shadow where walls meet the floor
+		# banners hung on the long walls (classic catacombs; the chapter walls have theirs painted in)
+		if _legacy and not throne:
+			var banner := _tex("props/banner.png")
+			var total := 0.0
+			for k in range(run.size() - 1):
+				total += run[k].distance_to(run[k + 1])
+			if total > 700.0:
+				for t in [0.3, 0.7]:
+					var q := _run_point(run, total * t)
+					var clear := true
+					for g in _gate_plan:
+						if q.distance_to(g[0]) < 330.0:
+							clear = false
+					if clear:
+						var seg := _run_dir(run, total * t)
+						_wall_banner(banner, q - seg * 50.0, q + seg * 50.0, 0.5, 0.55)
 	var s := Polygon2D.new()
-	var d := 46.0
-	s.polygon = PackedVector2Array([L, T, R, R + Vector2(-d * 2.0, 0), T + Vector2(0, d), L + Vector2(d * 2.0, 0)])
-	s.vertex_colors = PackedColorArray([Color(0, 0, 0, 0.55), Color(0, 0, 0, 0.6), Color(0, 0, 0, 0.55), Color(0, 0, 0, 0), Color(0, 0, 0, 0), Color(0, 0, 0, 0)])
+	s.polygon = sk_v
+	s.vertex_colors = sk_c
+	s.polygons = sk_p
 	s.z_index = -69
 	add_child(s)
-	# banners hung on the walls (classic catacombs; the chapter walls have theirs painted in)
-	if _legacy and not throne:
-		var banner := _tex("props/banner.png")
-		for t in [0.32, 0.68]:
-			if _exits == 2 and t > 0.5:
+
+var _gate_plan: Array = [] ## [base on the wall, wall direction, inward normal]
+
+func _run_point(run: PackedVector2Array, at: float) -> Vector2:
+	var acc := 0.0
+	for k in range(run.size() - 1):
+		var l := run[k].distance_to(run[k + 1])
+		if acc + l >= at:
+			return run[k].lerp(run[k + 1], (at - acc) / maxf(l, 0.001))
+		acc += l
+	return run[run.size() - 1]
+
+func _run_dir(run: PackedVector2Array, at: float) -> Vector2:
+	var acc := 0.0
+	for k in range(run.size() - 1):
+		var l := run[k].distance_to(run[k + 1])
+		if acc + l >= at:
+			return (run[k + 1] - run[k]).normalized()
+		acc += l
+	return (run[run.size() - 1] - run[run.size() - 2]).normalized()
+
+## Exit gates stand on straight stretches of the back walls: one high and central, or two far apart
+## (one each side when the walls allow).
+func _plan_gates() -> void:
+	_gate_plan = []
+	if _exits <= 0:
+		return
+	var width := 360.0 if _exits == 1 else 320.0
+	var cands: Array = []
+	for ri in range(_shape.wall_runs.size()):
+		var run: PackedVector2Array = _shape.wall_runs[ri]
+		var nr: Array = _shape.wall_normals[ri]
+		var total := 0.0
+		for k in range(run.size() - 1):
+			total += run[k].distance_to(run[k + 1])
+		var at := width * 0.5 + 40.0
+		while at <= total - width * 0.5 - 40.0:
+			var pa := _run_point(run, at - width * 0.5)
+			var pb := _run_point(run, at + width * 0.5)
+			var pm := _run_point(run, at)
+			var dev := 0.0
+			for f in [0.25, 0.5, 0.75]:
+				var q := _run_point(run, at - width * 0.5 + width * f)
+				dev = maxf(dev, q.distance_to(Geometry2D.get_closest_point_to_segment(q, pa, pb)))
+			if dev < 18.0:
+				# outward normal of the segment under the gate
+				var acc := 0.0
+				var n: Vector2 = nr[0]
+				for k in range(run.size() - 1):
+					var l := run[k].distance_to(run[k + 1])
+					if acc + l >= at:
+						n = nr[k]
+						break
+					acc += l
+				cands.append([pm, (pb - pa).normalized(), -n])
+			at += 24.0
+	if cands.is_empty():
+		return
+	if _exits == 1:
+		var best = cands[0]
+		for c in cands:
+			if c[0].y + absf(c[0].x) * 0.35 < best[0].y + absf(best[0].x) * 0.35:
+				best = c
+		_gate_plan = [best]
+		return
+	var bs := -INF
+	var pair: Array = []
+	for i in range(cands.size()):
+		for j in range(i + 1, cands.size()):
+			var a: Vector2 = cands[i][0]
+			var b: Vector2 = cands[j][0]
+			var dd := a.distance_to(b)
+			if dd < 560.0:
 				continue
-			_wall_banner(banner, L, T, t, 0.55)
-			_wall_banner(banner, T, R, 1.0 - t, 0.55)
+			var sc := -(a.y + b.y) * 0.8 + minf(dd, 1500.0) * 0.5 + (300.0 if a.x * b.x < 0.0 else 0.0)
+			if sc > bs:
+				bs = sc
+				pair = [cands[i], cands[j]]
+	if pair.is_empty():
+		_gate_plan = [cands[0]]
+		return
+	if pair[0][0].x > pair[1][0].x:
+		pair.reverse()
+	_gate_plan = pair
 
 func _wall_banner(tex: Texture2D, a: Vector2, b: Vector2, t: float, height_frac: float) -> void:
 	var s := Sprite2D.new()
@@ -1321,21 +1303,25 @@ func _wall_banner(tex: Texture2D, a: Vector2, b: Vector2, t: float, height_frac:
 
 # --------------------------------------------------------------- gates
 func _build_gates() -> void:
-	if _exits <= 0:
-		return
-	if _exits == 1:
-		_gate_at(Vector2(0, -vhalf.y + 40.0), 0.0, 400.0, Vector2(0, 1), Vector2(0, -half.y + 70.0))
-		return
-	# one gate on each back wall, sheared onto the wall plane
-	var T := Vector2(0, -vhalf.y)
-	for b in [T.lerp(Vector2(-vhalf.x, 0), _wl), T.lerp(Vector2(vhalf.x, 0), _wr)]:
-		var dir: Vector2 = (b - T).normalized()
-		var base := T + dir * (vhalf.length() * 0.42) + Vector2(0, 24.0)
+	for g in _gate_plan:
+		var dir: Vector2 = g[1]
+		var base: Vector2 = g[0] + Vector2(0, 20.0)
 		var ang := (dir if dir.x > 0.0 else -dir).angle()
-		var inward := Vector2(-dir.y, dir.x)
-		if inward.dot(-base) < 0.0:
-			inward = -inward
-		_gate_at(base, ang, 320.0, inward, base + inward * 125.0)
+		var inward: Vector2 = g[2]
+		_gate_at(base, ang, 360.0 if _exits == 1 else 320.0, inward, _shape.resolve(base + inward * 125.0, 40.0))
+	# classic rooms: the arena stands its veil arch on the floor, away from the painted gate
+	if _legacy and _doors.size() == 1:
+		var gp: Vector2 = _doors[0]["pos"]
+		var best := Vector2.INF
+		var bs := INF
+		for q in _shape.spots(0.5, 120.0, 300.0):
+			if q.distance_to(gp) < 520.0 or q.distance_to(_start) < 500.0:
+				continue
+			var sc: float = q.y - minf(q.distance_to(gp), 1000.0) * 0.25
+			if sc < bs:
+				bs = sc
+				best = q
+		_arch_spot = best if best.x < INF else _shape.resolve(Vector2(-gp.x, gp.y), 60.0)
 
 func _gate_at(base: Vector2, ang: float, width: float, inward: Vector2, floor_pos: Vector2) -> void:
 	var tex := _tex("gate_closed.png")
@@ -1403,55 +1389,144 @@ func _gate_at(base: Vector2, ang: float, width: float, inward: Vector2, floor_po
 func _uv(u: float, v: float) -> Vector2:
 	return Vector2(u * half.x, v * half.y)
 
+## Decor at the ends of each wall run and beside the gates (frame = no collision).
+func _frame_props(end_kind: String, gate_kind: String, corner_kind: String) -> void:
+	var top := Vector2.INF
+	for ri in range(_shape.wall_runs.size()):
+		var run: PackedVector2Array = _shape.wall_runs[ri]
+		var nr: Array = _shape.wall_normals[ri]
+		var a := run[0]
+		var b := run[run.size() - 1]
+		_prop(end_kind, a + (run[1] - a).normalized() * 34.0 - nr[0] * 16.0 + Vector2(0, 8), true)
+		_prop(end_kind, b + (run[run.size() - 2] - b).normalized() * 34.0 - nr[nr.size() - 1] * 16.0 + Vector2(0, 8), true)
+		for q in run:
+			if q.y < top.y:
+				top = q
+	for g in _gate_plan:
+		if gate_kind == "":
+			break
+		var k := (360.0 if _exits == 1 else 320.0) * 0.5 + 40.0
+		var dir: Vector2 = g[1]
+		_prop(gate_kind, g[0] - dir * k - g[2] * 6.0 + Vector2(0, 8), true)
+		_prop(gate_kind, g[0] + dir * k - g[2] * 6.0 + Vector2(0, 8), true)
+	if corner_kind != "" and top.x < INF:
+		var clear := true
+		for g in _gate_plan:
+			if top.distance_to(g[0]) < 330.0:
+				clear = false
+		if clear:
+			_prop(corner_kind, top + Vector2(0, 50.0), true)
+
+## Places a layout prop at (or near) its spot; when the shape has no floor there, on the free floor
+## spot nearest to it (props hug the edges and walls). Returns false when nothing fits.
+func _place_prop(kind: String, pos: Vector2) -> bool:
+	var r: float = PROPS[kind]["r"]
+	var pp := Vector2.INF
+	if _shape.on_floor(pos, r):
+		pp = _free_spot(pos, r)
+		if pp.x < INF and _shape.would_split(pp, r):
+			pp = Vector2.INF
+	if pp.x == INF:
+		pp = _nearest_spot(_decor_spots, pos, r)
+	if pp.x == INF:
+		return false
+	_prop(kind, pp)
+	return true
+
+func _nearest_spot(cands: Array, pos: Vector2, r: float, pool := false) -> Vector2:
+	var order := cands.duplicate()
+	order.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.distance_squared_to(pos) < b.distance_squared_to(pos))
+	for q in order:
+		if pool and q.distance_to(_sigil_c) < r + 160.0:
+			continue
+		if _spot_ok(q, r, true) and not _shape.would_split(q, r):
+			return q
+	return Vector2.INF
+
+## A floor spot for a hazard of ground radius r (pools, traps, debris): wholly on the floor, clear of the
+## entry, the exits, the props and the other hazards. Vector2.INF when the chamber has no room left.
+func _fit_spot(pos: Vector2, r: float, pool := false) -> Vector2:
+	if _shape.on_floor(pos, r + 40.0) and _spot_ok(pos, r, true) and pos.distance_to(_start) > r + 220.0 \
+			and not (pool and pos.distance_to(_sigil_c) < r + 160.0) and not _shape.would_split(pos, r):
+		return pos
+	var cands: Array = []
+	for q in _shape.spots(0.5, r + 40.0):
+		if q.distance_to(_start) > r + 220.0:
+			cands.append(q)
+	return _nearest_spot(cands, pos, r, pool)
+
+var _decor_spots: Array = []
+
 func _build_layout() -> void:
-	# frame pillars at the side corners and flanking the gate (outside the playable area)
-	_prop("pillar_big", Vector2(-vhalf.x + 30.0, -10.0))
-	_prop("pillar_big", Vector2(vhalf.x - 30.0, -10.0))
-	if _exits == 1:
-		var k := 290.0
-		_prop("pillar_frame", Vector2(-k, -vhalf.y + k * vhalf.y / vhalf.x + 6.0))
-		_prop("pillar_frame", Vector2(k, -vhalf.y + k * vhalf.y / vhalf.x + 6.0))
-	elif _exits == 0:
-		_prop("pillar_frame", Vector2(-330, -vhalf.y + 330.0 * vhalf.y / vhalf.x + 6.0))
-		_prop("pillar_frame", Vector2(330, -vhalf.y + 330.0 * vhalf.y / vhalf.x + 6.0))
+	_decor_spots = _shape.spots(0.5, 50.0, 260.0)
+	# frame pillars at the wall ends and flanking the gate (outside the playable area)
+	_frame_props("pillar_big", "pillar_frame", "")
+	_build_pillars("pillar")
 	for e in LAYOUTS[theme_id]:
-		_prop(e[0], _uv(e[1], e[2]))
+		_place_prop(e[0], _uv(e[1], e[2]))
 	# lanterns hanging from the vault
 	var lpos := [Vector2(-0.18, -0.25), Vector2(0.55, 0.22), Vector2(-0.6, 0.3)]
 	for i in range(2 if floor_key == "throne" else 3):
 		var lp: Vector2 = lpos[i]
-		_lantern(_uv(lp.x, lp.y))
+		_lantern(_shape.resolve(_uv(lp.x, lp.y), 80.0))
+
+## Pillar clusters the template asks for (solid, they block shots' paths visually and foes' bodily).
+func _build_pillars(kind: String) -> void:
+	for c in _shape.pillars:
+		var n := 1 + _rng.randi() % 2
+		for k in range(n):
+			var off := Vector2.ZERO if k == 0 else Vector2(_rng.randf_range(-1, 1), _rng.randf_range(-0.5, 0.5)).normalized() * 120.0
+			var q: Vector2 = c + off
+			if _shape.on_floor(q, PROPS[kind]["r"] + 40.0) and _spot_ok(q, PROPS[kind]["r"], true) and not _shape.would_split(q, PROPS[kind]["r"]):
+				_prop(kind, q)
 
 func _build_chapter_layout() -> void:
 	var lay := _layout
-	var T := Vector2(0, -vhalf.y)
-	var L := T.lerp(Vector2(-vhalf.x, 0), _wl)
-	var R := T.lerp(Vector2(vhalf.x, 0), _wr)
-	# frame pieces at the wall ends and the back corner (decor only, outside the playable area)
+	_decor_spots = _shape.spots(0.5, 50.0, 260.0)
+	# frame pieces at the wall ends and beside the gates (decor only, outside the playable area)
 	var frame: Array = {"garden": ["willow", "g_arch"], "forge": ["chainpost", "furnace"], "hollow": ["h_statue", "standard"]}[chapter]
-	_prop(frame[0], L + Vector2(50.0, 14.0), true)
-	_prop(frame[0], R + Vector2(-50.0, 14.0), true)
-	if _exits != 1:
-		_prop(frame[1], T + Vector2(0, 70.0), true)
-	else:
-		_prop(frame[1], T.lerp(L, 0.34) + Vector2(16, 40), true)
-		_prop(frame[1], T.lerp(R, 0.34) + Vector2(-16, 40), true)
-	# set pieces first: they claim lights before the props do
+	_frame_props(frame[0], frame[1] if _exits == 1 else "", frame[1] if _exits != 1 else "")
+	_build_pillars({"garden": "g_statue", "forge": "anvil", "hollow": "obelisk"}[chapter])
+	# set pieces first: they claim lights before the props do (each moved onto solid floor if needed)
 	for w in lay.get("water", []):
-		_water_pool(_uv(w[0], w[1]), w[2])
+		var c := _fit_spot(_uv(w[0], w[1]), w[2], true)
+		if c.x < INF:
+			_water_pool(c, w[2])
 	for w in lay.get("lava", []):
-		_lava_pool(_uv(w[0], w[1]), w[2])
-	for c in lay.get("channels", []):
+		var c := _fit_spot(_uv(w[0], w[1]), w[2], true)
+		if c.x < INF:
+			_lava_pool(c, w[2])
+	for ch in lay.get("channels", []):
 		var pts := PackedVector2Array()
-		for q in c:
-			pts.append(_uv(q[0], q[1]))
-		_lava_channel(pts, 62.0)
+		var ok := true
+		for q in ch:
+			var w := _uv(q[0], q[1])
+			ok = ok and _shape.on_floor(w, 110.0)
+			pts.append(w)
+		if not ok:
+			# the template has no floor along the painted course: a shorter channel across solid floor
+			var mid := _fit_spot(pts[pts.size() / 2], 200.0)
+			pts = PackedVector2Array()
+			if mid.x < INF:
+				var d := Vector2.from_angle(_rng.randf_range(-0.6, 0.6) + (0.0 if _rng.randf() < 0.5 else PI)) * 190.0
+				d.y *= 0.55
+				for q in [mid - d, mid + Vector2(d.y, -d.x) * 0.25, mid + d]:
+					if _shape.on_floor(q, 100.0):
+						pts.append(q)
+		if pts.size() >= 2:
+			_lava_channel(pts, 62.0)
 	for w in lay.get("pits", []):
-		_pit(_uv(w[0], w[1]), w[2])
-	for s in lay.get("spikes", []):
-		_spike_trap(_uv(s[0], s[1]))
+		var c := _fit_spot(_uv(w[0], w[1]), w[2], true)
+		if c.x < INF:
+			_pit(c, w[2])
+	for sp in lay.get("spikes", []):
+		var c := _fit_spot(_uv(sp[0], sp[1]), 90.0)
+		if c.x < INF:
+			_spike_trap(c)
 	for d in lay.get("debris", []):
-		_debris_zone(_uv(d[0], d[1]), d[2])
+		var c := _fit_spot(_uv(d[0], d[1]), d[2])
+		if c.x < INF:
+			_debris_zone(c, d[2])
 	_build_heat()
 	# never start the player inside water, lava, a trap or a debris zone
 	if _start_blocked(_start):
@@ -1470,9 +1545,7 @@ func _build_chapter_layout() -> void:
 		var kinds: PackedStringArray = String(e[0]).split("|")
 		var kind := kinds[_rng.randi() % kinds.size()]
 		var jit := 0.0 if (e.size() > 3 and e[3] == 0) else 0.035
-		var pp := _free_spot(_uv(e[1] + _rng.randf_range(-jit, jit), e[2] + _rng.randf_range(-jit, jit)), PROPS[kind]["r"])
-		if pp.x < INF:
-			_prop(kind, pp)
+		_place_prop(kind, _uv(e[1] + _rng.randf_range(-jit, jit), e[2] + _rng.randf_range(-jit, jit)))
 	# a seeded subset of the breakables (2 to 4)
 	var br: Array = lay.get("breakables", []).duplicate()
 	for i in range(br.size()):
@@ -1482,15 +1555,11 @@ func _build_chapter_layout() -> void:
 		br[j] = tmp
 	for i in range(mini(br.size(), 2 + _rng.randi() % 3)):
 		var b: Array = br[i]
-		var bp := _free_spot(_uv(b[1] + _rng.randf_range(-0.03, 0.03), b[2] + _rng.randf_range(-0.03, 0.03)), PROPS[b[0]]["r"])
-		if bp.x < INF:
-			_prop(b[0], bp)
+		_place_prop(b[0], _uv(b[1] + _rng.randf_range(-0.03, 0.03), b[2] + _rng.randf_range(-0.03, 0.03)))
 	if chapter == "garden":
 		var lpos := [Vector2(-0.2, -0.22), Vector2(0.56, 0.2), Vector2(-0.58, 0.3)]
 		for i in range(2 if floor_key.ends_with("_boss") else 3):
-			var lp := _free_spot(_uv(lpos[i].x, lpos[i].y), 30.0)
-			if lp.x < INF:
-				_lantern(lp)
+			_lantern(_shape.resolve(_uv(lpos[i].x, lpos[i].y), 80.0))
 	# floating palace debris drifting past the island's front edges
 	if chapter == "hollow":
 		var cnt := 6 if floor_key.ends_with("_boss") else 4
@@ -1501,7 +1570,9 @@ func _build_chapter_layout() -> void:
 ## True when a prop of ground radius r may stand at pos: on the island, clear of hazards, pits,
 ## the player start, the exits and the props already placed.
 func _spot_ok(pos: Vector2, r: float, on_walk := false) -> bool:
-	if not Geometry2D.is_point_in_polygon(pos, _island):
+	# on the floor, and either flush with the edge or leaving a lane any walker fits through
+	var depth: float = -_shape.floor_dist(pos)
+	if depth < r * 0.6 or (depth > r + 34.0 and depth < r + 110.0):
 		return false
 	if on_walk and not _inside_island(pos, 10.0):
 		return false
@@ -1523,7 +1594,7 @@ func _spot_ok(pos: Vector2, r: float, on_walk := false) -> bool:
 					return false
 	for o in _obstacles:
 		var dv: Vector2 = o["pos"] - pos
-		if Vector2(dv.x, dv.y * 2.0).length() < float(o["radius"]) + r + 10.0:
+		if Vector2(dv.x, dv.y * 2.0).length() < float(o["radius"]) + r + 80.0:
 			return false
 	return true
 
@@ -1586,6 +1657,7 @@ func _prop(kind: String, pos: Vector2, frame := false) -> Node2D:
 	if r > 0.0 and not frame and _inside_island(pos):
 		var ob := {"pos": pos, "radius": r}
 		_obstacles.append(ob)
+		_shape.add_obstacle(pos, r)
 		if d.get("break", false):
 			_breakables.append({"id": _breakables.size(), "pos": pos, "radius": r, "node": root, "obstacle": ob, "broken": false})
 	var fc: Array = theme["flame"]
@@ -1955,6 +2027,7 @@ func _pit(c: Vector2, r: float) -> void:
 	m.set_shader_parameter("cliff_depth", 0.7)
 	_pool_quad(c, r, m, -68, 1.25)
 	_obstacles.append({"pos": c, "radius": r * 0.86, "pit": true})
+	_shape.add_obstacle(c, r * 0.86)
 	var v := _particles(8, 3.0, _rock, Color(0.5, 0.45, 0.5), 0)
 	v.position = c + Vector2(0, -r * ISO * 0.3)
 	v.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
@@ -2352,15 +2425,10 @@ func _build_vignette() -> void:
 
 # --------------------------------------------------------------- spawns
 func _compute_spawns() -> void:
-	var cands: Array = []
-	var rings := [0.68, 0.45] if _legacy else [0.68, 0.45, 0.25]
-	for ring in rings:
-		for i in range(10):
-			var a := TAU * (i + (0.5 if ring < 0.5 else 0.0)) / 10.0
-			cands.append(Vector2(cos(a) * half.x * ring, sin(a) * half.y * ring))
+	# solid floor well inside the edge (the arena jitters spawns by up to 60 px), spread out
+	var cands: Array = _shape.spots(0.75, 120.0)
+	var keep: Array = []
 	for c in cands:
-		if not _legacy and not _inside_island(c, 40.0):
-			continue
 		var ok := true
 		for o in _obstacles:
 			var d: Vector2 = c - o["pos"]
@@ -2373,14 +2441,35 @@ func _compute_spawns() -> void:
 				if h["type"] == "lava" and Geometry2D.is_point_in_polygon(c, h["poly"]):
 					ok = false
 					break
-		if not ok or c.distance_to(_start) <= 330.0:
+		if not ok or c.distance_to(_start) <= 420.0:
 			continue
-		var near_door: bool = c.distance_to(get_door_pos()) <= 140.0
+		var near_door: bool = c.distance_to(get_door_pos()) <= 160.0
 		for d in _doors:
-			if c.distance_to(d["pos"]) <= 140.0:
+			if c.distance_to(d["pos"]) <= 160.0:
 				near_door = true
 		if not near_door:
-			_spawns.append(c)
+			keep.append(c)
+	if keep.is_empty():
+		keep = [_shape.resolve(_start + Vector2(0, -500), 80.0)]
+	# farthest-point pick: up to 20 spots covering the whole chamber
+	var first: Vector2 = keep[0]
+	for c in keep:
+		if c.distance_to(_start) > first.distance_to(_start):
+			first = c
+	_spawns.append(first)
+	while _spawns.size() < mini(20, keep.size()):
+		var best: Vector2 = keep[0]
+		var bd := -1.0
+		for c in keep:
+			var dmin := INF
+			for q in _spawns:
+				dmin = minf(dmin, c.distance_squared_to(q))
+			if dmin > bd:
+				bd = dmin
+				best = c
+		if bd < 1.0:
+			break
+		_spawns.append(best)
 
 # =============================================================== per-frame life
 

@@ -18,9 +18,11 @@ uniform vec4 light_b[6];
 uniform float ambient = 0.78;
 
 varying vec2 world;
+varying vec4 vcol;
 
 void vertex() {
 	world = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy;
+	vcol = COLOR; // per-segment face shade on shaped walls (white otherwise)
 }
 
 void fragment() {
@@ -45,7 +47,7 @@ void fragment() {
 		float att = max(1.0 - dot(d, d), 0.0);
 		light += light_b[i].rgb * (att * att * a.w * 0.8);
 	}
-	c *= light * shade;
+	c *= light * shade * vcol.rgb;
 	// ceiling darkness + floor contact shadow
 	float v = UV.y;
 	c *= smoothstep(0.0, top_dark, v);

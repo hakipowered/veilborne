@@ -234,6 +234,10 @@ func nearest_hero(pos: Vector2) -> Node:
 func resolve_collision(pos: Vector2, radius: float) -> Vector2:
 	return env.resolve(pos, radius)
 
+## Walker heading for target: its move turned round chasms / void when the straight line is blocked.
+func steer(pos: Vector2, target: Vector2, move: Vector2, radius := 16.0) -> Vector2:
+	return env.steer(pos, target, move, radius) if env.has_method("steer") else move
+
 # ---------------------------------------------------------------- rooms
 
 func _load_room(idx: int, reward := "") -> void:
@@ -259,6 +263,7 @@ func _load_room(idx: int, reward := "") -> void:
 		exits = 0 if plan_room["final"] else 1
 	elif idx + 1 < Game.run_plan.size() and Game.plan_room(idx + 1)["type"] == "boss":
 		exits = 1
+	env.room_kind = String(plan_room.get("type", "combat")) # picks the chamber shape pool (room_layouts.gd)
 	env.build(plan_room["floor"], idx, Game.run_seed + idx, exits)
 	env.add_ysorted_props_to(entities)
 	room_half = env.get_bounds_half()

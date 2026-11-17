@@ -249,6 +249,9 @@ func simulate(delta: float) -> void:
 	if state == S_HURT and state_t > 0.18:
 		_set_state(S_MOVE)
 
+	# heading for the target round chasms and void (irregular chambers)
+	if has_t and state != S_ATTACK and arena.has_method("steer"):
+		move = arena.steer(position, _target.position, move, radius)
 	# Knockback decays; heavy foes barely budge.
 	_knock = _knock.move_toward(Vector2.ZERO, 1400.0 * delta)
 	var step := (move + _knock) * delta

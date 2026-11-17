@@ -5,6 +5,8 @@ extends Node2D
 ## Options: --rooms=0,1,2,3,4  --bench  --quit
 ## Chapter layouts: --chapters[=garden,forge,hollow]  renders every variant + the boss room of each
 ##   chapter (overview, close-up, doors with reward icons, low-quality); --lowq; --hazards (debug outlines)
+## Chamber shapes: --shapes[=ell,tee,...] --shape-keys=catacomb,garden  one framed overview per template and
+##   floor key (room_layouts.gd); --marks adds start (green), spawns (red), exits (yellow), flow test (cyan)
 const EnvScript := preload("res://scenes/environment.gd")
 
 var out := "/tmp"
@@ -15,6 +17,9 @@ var hide := []
 var chapters := []
 var lowq := false
 var show_hazards := false
+var shapes := []
+var shape_keys := ["catacomb", "garden"]
+var marks := false
 var env: Node2D
 var entities: Node2D
 var cam: Camera2D
@@ -34,6 +39,10 @@ func _ready() -> void:
 		elif a.begins_with("--chapters="): chapters = Array(a.substr(11).split(","))
 		elif a == "--lowq": lowq = true
 		elif a == "--hazards": show_hazards = true
+		elif a == "--shapes": shapes = load("res://scenes/room_layouts.gd").TEMPLATES.keys()
+		elif a.begins_with("--shapes="): shapes = Array(a.substr(9).split(","))
+		elif a.begins_with("--shape-keys="): shape_keys = Array(a.substr(13).split(","))
+		elif a == "--marks": marks = true
 	env = EnvScript.new()
 	add_child(env)
 	entities = Node2D.new()
@@ -81,6 +90,10 @@ func _build(i: int) -> void:
 
 func _run() -> void:
 	await get_tree().process_frame
+	if not shapes.is_empty():
+		await _run_shapes()
+		get_tree().quit()
+		return
 	if not chapters.is_empty():
 		await _run_chapters()
 		if bench:
@@ -256,3 +269,63 @@ func _bench_chapters() -> void:
 				print("BENCH %s lowq=%s avg_frame_ms=%.2f draw_calls_max=%d tex_mem_MB=%.1f particles=%d nodes=%d" % [
 					key, lq, dt, maxdc, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0, parts,
 					int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))])
+
+
+# ------------------------------------------------------------------ chamber shapes
+func _run_shapes() -> void:
+	var lay = load("res://scenes/room_layouts.gd")
+	for key in shape_keys:
+		for sid in shapes:
+			var kind: String = lay.TEMPLATES[sid]["kind"]
+			var k: String = key
+			if kind == "boss":
+				k = "throne" if key == "catacomb" else key + "_boss"
+			env.force_shape = sid
+			env.force_variant = shapes.find(sid)
+			env.room_kind = "elite" if kind == "elite" else ("shop" if kind == "small" else "combat")
+			var exits := 1 if kind == "boss" else (2 if key != "catacomb" else 1)
+			env.build(k, 3, 4242, exits)
+			env.add_ysorted_props_to(entities)
+			hero.position = env.get_player_start()
+			var sp: Array = env.get_spawn_points()
+			foe.position = sp[0] if sp.size() > 0 else Vector2(200, 0)
+			var icons := []
+			for r in ["boon", "gold", "heal", "forge"]:
+				icons.append(load("res://art/ui/reward_%s.png" % r))
+			env.set_door_rewards([icons[0], icons[2]])
+			if _dbg:
+				_dbg.queue_free()
+				_dbg = null
+			if marks:
+				_dbg = Node2D.new()
+				_dbg.z_index = 60
+				add_child(_dbg)
+				_mark(env.get_player_start(), Color.GREEN, 26)
+				for q in sp: _mark(q, Color.RED, 14)
+				for q in env.get_door_positions(): _mark(q, Color.YELLOW, 22)
+				for o in env.get_obstacles(): _mark(o["pos"], Color.ORANGE, 8)
+				# flow path from the start to the first door
+				var p: Vector2 = env.get_player_start()
+				var goal: Vector2 = env.get_door_positions()[0] if env.get_door_positions().size() > 0 else Vector2.ZERO
+				for i in range(400):
+					var mv: Vector2 = env.steer(p, goal, (goal - p).normalized() * 12.0, 16.0)
+					p = env.resolve(p + mv, 16.0)
+					if i % 6 == 0: _mark(p, Color.CYAN, 5)
+					if p.distance_to(goal) < 30.0: break
+			var b: Rect2 = env._shape.bounds
+			var view := Vector2(get_viewport().get_visible_rect().size)
+			var z := minf(view.x / (b.size.x + 500.0), view.y / (b.size.y + env.wall_h + 500.0))
+			cam.zoom = Vector2(z, z)
+			cam.position = b.get_center() + Vector2(0, -env.wall_h * 0.5 + 120.0)
+			cam.reset_smoothing()
+			print("SHAPE %s %s %s | doors=%d spawns=%d hazards=%d obstacles=%d walls=%d" % [k, sid, env.get_room_title(), env.get_door_positions().size(), sp.size(), env.get_hazards().size(), env.get_obstacles().size(), env._shape.wall_runs.size()])
+			await _shot("shape_%s_%s" % [key, sid], 1.0)
+
+func _mark(p: Vector2, c: Color, r: float) -> void:
+	var l := Polygon2D.new()
+	var pts := PackedVector2Array()
+	for k in range(12):
+		pts.append(p + Vector2(cos(TAU * k / 12.0), sin(TAU * k / 12.0) * 0.5) * r)
+	l.polygon = pts
+	l.color = c
+	_dbg.add_child(l)

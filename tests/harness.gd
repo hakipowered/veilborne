@@ -123,7 +123,7 @@ func _physics_process(delta: float) -> void:
 			break
 	if arena.door_open and _logged_doors != arena.room_index:
 		_logged_doors = arena.room_index
-		print("%s: room %d (%s) exits %s (reward this room: %s) gold=%d shards=%d props_left=%d at %s" % [role.to_upper(), arena.room_index, arena.plan_room.get("type"), arena.door_rewards, arena.room_reward, Game.run_gold, Game.run_shards, arena._props.size(), arena.door_points])
+		print("%s: room %d (%s) [%s] exits %s (reward this room: %s) gold=%d shards=%d props_left=%d at %s" % [role.to_upper(), arena.room_index, arena.plan_room.get("type"), arena.env.get("shape_id"), arena.door_rewards, arena.room_reward, Game.run_gold, Game.run_shards, arena._props.size(), arena.door_points])
 	for h in pads.keys():
 		if not is_instance_valid(h): continue
 		if h.state == "special" and not _spec_state.get(h, false):
@@ -145,8 +145,10 @@ func _physics_process(delta: float) -> void:
 			p.special = p.hold > 0
 		else:
 			p.special = false
+		var goal: Vector2 = h.position
 		if e:
 			target = e.position
+			goal = target
 			var ranged: bool = h.weapon_id == "bow"
 			var want := 380.0 if ranged else 90.0
 			p.move = (target - h.position).normalized() if bd > want else Vector2.ZERO
@@ -175,8 +177,12 @@ func _physics_process(delta: float) -> void:
 			var fi: int = arena.door_rewards.find("forge")
 			if fi >= 0 and fi < arena.door_points.size(): k = fi
 			p.move = (arena.door_points[k] - h.position).normalized()
+			goal = arena.door_points[k]
 		else:
 			p.move = Vector2.ZERO
+		# irregular chambers: walk round chasms toward the foe / the chosen exit
+		if p.move.length() > 0.1 and arena.env.has_method("steer"):
+			p.move = arena.env.steer(h.position, goal, p.move, 16.0).normalized()
 		_avoid_hazards(h, p)
 		_unstick(h, p)
 
