@@ -60,6 +60,10 @@ Everyone here lost someone to the pit, so they moved in to help.
 | `corwin` | **Sergeant Corwin Hale** (ghost) | Guide and lore-keeper. Was the Regent's soldier | His captain, Aldric, to grief | To get his old boss back to who he was | Clipped and deadpan, military | Respects them like soldiers, protects them like nieces |
 | `wren` | **Wren** (17) | Cook | Her mum Maren, pulled in while she was gardening at the edge | To feed everyone, and to know if her mum is OK | Fast, cheeky and bossy about food | Bossy little sister to both of them |
 
+## Mister Wick (the shop)
+
+A hooded peddler with a big pack and a green-flamed lantern, met once or so per chapter (the chamber before the boss, or an exit marked with his purse). He sold lamp oil in Larkhill until he fell into the pit, years ago. He never left: the dead drop things, he picks them up and sells them to the only folk who still carry gold, the sisters. Cheerful, a bit creepy, always grinning. Odo still owes him for six barrels of oil. His lines are in `scenes/shop.gd` (first meeting, greetings, thanks); speaker id `wick`.
+
 ## The Wardens (boon givers)
 
 They are the spirits of Larkhill's old guardians. They used to help Lord Aldric keep the seal shut. Now they help the sisters from beyond the grave. Each one speaks a short line when their boon card appears (`Story.BARKS`).

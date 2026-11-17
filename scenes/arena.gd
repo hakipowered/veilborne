@@ -76,6 +76,7 @@ var door_points: Array = []
 var _arch: Sprite2D
 var _door_req_t := 0.0
 var _icons := {}
+var rewards: Node2D ## scenes/room_rewards.gd: exit emblems, reward objects in the room, the shop
 
 func _ready() -> void:
 	EnemyScript = load("res://entities/enemy.gd")
@@ -128,6 +129,9 @@ func _ready() -> void:
 	hud = HudScript.new()
 	add_child(hud)
 	hud.arena = self
+	rewards = preload("res://scenes/room_rewards.gd").new()
+	rewards.arena = self
+	add_child(rewards)
 
 func _exit_tree() -> void:
 	if Net.arena == self:
@@ -247,6 +251,11 @@ func _load_room(idx: int, reward := "") -> void:
 	var is_boss_room: bool = plan_room["type"] == "boss"
 	var new_chapter: bool = idx == 0 or int(Game.plan_room(idx - 1)["chapter"]) != ch
 	room_reward = reward if reward != "" else ("boon" if idx == 0 or is_boss_room else "")
+	if plan_room["type"] == "shop":
+		room_reward = "shop"
+	var is_shop := room_reward == "shop"
+	if rewards:
+		rewards.clear()
 	door_rewards.clear()
 	door_points.clear()
 	casts.clear()
@@ -261,7 +270,7 @@ func _load_room(idx: int, reward := "") -> void:
 	var exits := -1
 	if is_boss_room:
 		exits = 0 if plan_room["final"] else 1
-	elif idx + 1 < Game.run_plan.size() and Game.plan_room(idx + 1)["type"] == "boss":
+	elif idx + 1 < Game.run_plan.size() and Game.plan_room(idx + 1)["type"] in ["boss", "shop"]:
 		exits = 1
 	env.room_kind = String(plan_room.get("type", "combat")) # picks the chamber shape pool (room_layouts.gd)
 	env.build(plan_room["floor"], idx, Game.run_seed + idx, exits)
@@ -281,7 +290,9 @@ func _load_room(idx: int, reward := "") -> void:
 	boss_spawned = false
 	boss_kind = _boss_kind(ch) if is_boss_room else ""
 	boss_pending = is_boss_room
-	_waves = [] if is_boss_room else _build_waves(idx, plan_room)
+	_waves = [] if is_boss_room or is_shop else _build_waves(idx, plan_room)
+	if is_shop:
+		wave_delay = 0.4
 	var i := 0
 	var n := hero_nodes.size()
 	var start: Vector2 = env.get_player_start()
@@ -299,6 +310,8 @@ func _load_room(idx: int, reward := "") -> void:
 		rname = _enemy_name(boss_kind)
 	elif plan_room["type"] == "elite":
 		rname = "Champion's Hall"
+	elif is_shop:
+		rname = "Mister Wick's Stall"
 	var roman: String = ["I", "II", "III", "IV"][ch - 1]
 	if rname == "":
 		rname = cname
@@ -1262,6 +1275,7 @@ func _on_kill(eid: int, killer: String, pos: Vector2, kind: String) -> void:
 	spark(pos + Vector2(0, -40), Color(0.85, 0.5, 1.0), 26)
 	shake(22.0 if boss else 5.0)
 	Game.run_shards += 25 if boss else 1
+	Game.run_gold += 20 if boss else 1 ## coin for Mister Wick's shop (scenes/shop.gd prices)
 	var h = hero_nodes.get(killer)
 	if is_instance_valid(h) and h.controlled and h.stats["lifesteal"] > 0:
 		h.heal(h.stats["lifesteal"])
@@ -1299,8 +1313,8 @@ func _on_room_clear() -> void:
 	if room_index + 1 >= Game.run_plan.size():
 		return
 	# Exits are known right away (deterministic), so the host can take a door while others still pick.
-	if Game.plan_room(room_index + 1)["type"] == "boss":
-		door_rewards = ["boss"]
+	if Game.plan_room(room_index + 1)["type"] in ["boss", "shop"]:
+		door_rewards = [String(Game.plan_room(room_index + 1)["type"])]
 		door_points = [env.get_door_pos()]
 	else:
 		door_rewards = Game.roll_door_rewards(room_index + 1)
@@ -1309,15 +1323,17 @@ func _on_room_clear() -> void:
 			door_rewards.resize(door_points.size())
 	for k in range(door_points.size()):
 		door_points[k] = resolve_collision(door_points[k], 16.0)
-	var icons: Array = []
-	for r in door_rewards:
-		icons.append(_door_icon(String(r)))
-	if env.has_method("set_door_rewards"):
-		env.set_door_rewards(icons)
 	_grant_reward(room_reward, local)
 
-## Grants this chamber's reward to this device's heroines, then opens the exits.
+## Puts this chamber's reward in the room (rewards.spawn); it is applied when a heroine uses it.
 func _grant_reward(kind: String, local: Array) -> void:
+	if rewards:
+		rewards.spawn(kind, local)
+	else:
+		_apply_reward(kind, local)
+
+## Grants a reward to this device's heroines, then opens the exits (boon / forge: after the cards).
+func _apply_reward(kind: String, local: Array) -> void:
 	match kind:
 		"boon", "forge":
 			_offer_next(local, kind)
@@ -1363,6 +1379,8 @@ func _offer_next(queue: Array, kind := "boon") -> void:
 			_offer_next(queue, kind))
 		return
 	var choices := Game.roll_boons(rng, h.boons)
+	if rewards:
+		choices = rewards.bias_boons(choices)
 	hud.show_boon_choice(h, choices, func(id: String, rarity: int):
 		if is_instance_valid(h):
 			h.add_boon(id, rarity)
@@ -1716,13 +1734,6 @@ func _draw_groundfx() -> void:
 		groundfx.draw_circle(Vector2.ZERO, ring[1] * (0.3 + 0.8 * f), Color(col, 0.35 * (1.0 - f)))
 		groundfx.draw_arc(Vector2.ZERO, ring[1] * (0.3 + 0.8 * f), 0, TAU, 40, Color(col.lightened(0.3), 1.0 - f), 10.0 * (1.0 - f) + 2.0)
 		groundfx.draw_set_transform(Vector2.ZERO)
-	# glow under open exits
-	if door_open:
-		for k in range(door_points.size()):
-			var rc: Color = Game.REWARDS.get(String(door_rewards[k]) if k < door_rewards.size() else "", {}).get("color", Color(1, 0.85, 0.55))
-			groundfx.draw_set_transform(door_points[k], 0.0, Vector2(1, 0.5))
-			groundfx.draw_circle(Vector2.ZERO, 70.0, Color(rc, 0.16 + 0.06 * sin(now * 3.0)))
-			groundfx.draw_set_transform(Vector2.ZERO)
 
 ## Additive: blade glows, crescents, arrow trails, volley rain.
 func _draw_airfx() -> void:
@@ -1884,30 +1895,3 @@ func _draw_weapon_overlay() -> void:
 		overlay.draw_set_transform_matrix(Transform2D(spin, Vector2(1.0, 0.62 if k == "shield" else 0.7), 0.0, at))
 		overlay.draw_texture_rect(tex, Rect2(-sz * 0.5, -sz * 0.5, sz, sz), false)
 		overlay.draw_set_transform(Vector2.ZERO)
-	# exits: painted gates float their own reward icon (env.set_door_rewards); the arch exit gets ours
-	if door_open and not door_points.is_empty():
-		var orb := _icon("orb")
-		var font := VTheme.font("caps")
-		var gates := _gate_count()
-		for k in range(door_points.size()):
-			var rid := String(door_rewards[k]) if k < door_rewards.size() else ""
-			var info: Dictionary = Game.REWARDS.get(rid, {})
-			var bob := Vector2(0, sin(now * 2.2 + k) * 8.0)
-			var top: Vector2 = door_points[k] + Vector2(0, -190.0) + bob
-			if k >= gates:
-				if orb:
-					overlay.draw_texture_rect(orb, Rect2(top - Vector2(52, 52), Vector2(104, 104)), false)
-				var tex: Texture2D = _door_icon(rid)
-				if tex:
-					var sc := 70.0 / maxf(tex.get_width(), tex.get_height())
-					var sz := Vector2(tex.get_width(), tex.get_height()) * sc
-					overlay.draw_texture_rect(tex, Rect2(top - sz * 0.5, sz), false)
-			else:
-				top = door_points[k] + Vector2(0, -150.0)
-			var label := String(info.get("name", ""))
-			if rid == "boss":
-				label = _enemy_name(_boss_kind(int(Game.plan_room(room_index + 1)["chapter"])))
-			label = label.to_upper()
-			if font and label != "":
-				overlay.draw_string_outline(font, top + Vector2(-160, 78), label, HORIZONTAL_ALIGNMENT_CENTER, 320, 20, 7, Color(0.03, 0.01, 0.04, 0.95))
-				overlay.draw_string(font, top + Vector2(-160, 78), label, HORIZONTAL_ALIGNMENT_CENTER, 320, 20, Color(info.get("color", Color(1, 0.85, 0.5)), 1.0).lightened(0.25))

@@ -143,6 +143,7 @@ const REWARDS := {
 	"heal": {"name": "Healing Chalice", "icon": "reward_heal", "color": Color(1.0, 0.35, 0.4), "weight": 14},
 	"shards": {"name": "Veil Shards", "icon": "shard", "color": Color(0.6, 0.85, 1.0), "weight": 14},
 	"gold": {"name": "Gilded Coin", "icon": "reward_gold", "color": Color(1.0, 0.85, 0.35), "weight": 12},
+	"shop": {"name": "Mister Wick's Wares", "icon": "reward_shop", "color": Color(0.7, 1.0, 0.5), "weight": 9},
 }
 const REWARD_HEAL_FRAC := 0.35
 const REWARD_SHARDS := 15
@@ -268,7 +269,8 @@ func start_run(seed_value: int) -> void:
 	data["runs"] += 1
 	save_slot()
 
-## Four chapters, each 6..8 chambers (the middle one holds an elite) and a boss hall. Same on every device.
+## Four chapters, each 6..8 chambers (the middle one holds an elite, the one before the boss is Mister Wick's
+## shop when the chapter has 4+ chambers) and a boss hall. Same on every device.
 func build_run_plan(seed_value: int) -> Array:
 	var plan: Array = []
 	for ci in range(4):
@@ -276,8 +278,9 @@ func build_run_plan(seed_value: int) -> Array:
 		if n <= 0:
 			n = 6 + posmod(hash("chapter:%d:%d" % [seed_value, ci]), 3)
 		var elite_at := n / 2
+		var shop_at := n - 1 if n >= 4 else -1
 		for i in range(n):
-			plan.append({"floor": CHAPTER_FLOORS[ci], "chapter": ci + 1, "type": "elite" if i == elite_at else "combat",
+			plan.append({"floor": CHAPTER_FLOORS[ci], "chapter": ci + 1, "type": "elite" if i == elite_at else ("shop" if i == shop_at else "combat"),
 				"n": i + 1, "count": n + 1, "final": false})
 		plan.append({"floor": CHAPTER_BOSS_FLOORS[ci], "chapter": ci + 1, "type": "boss", "n": n + 1, "count": n + 1, "final": ci == 3})
 	return plan
@@ -460,13 +463,15 @@ func roll_door_rewards(room: int) -> Array:
 	rng.seed = hash("doors:%d:%d" % [run_seed, room])
 	var first := "forge" if rng.randf() < 0.45 else "boon"
 	var out := [first]
+	# the shop is a whole chamber of its own: not instead of an elite, nor next to a planned shop
+	var no_shop: bool = plan_room(room)["type"] != "combat" or plan_room(room + 1)["type"] == "shop" or plan_room(room - 1)["type"] == "shop"
 	var total := 0
 	for k in REWARDS.keys():
-		if k != first:
+		if k != first and not (k == "shop" and no_shop):
 			total += int(REWARDS[k]["weight"])
 	var pick := rng.randi_range(0, total - 1)
 	for k in REWARDS.keys():
-		if k == first:
+		if k == first or (k == "shop" and no_shop):
 			continue
 		pick -= int(REWARDS[k]["weight"])
 		if pick < 0:

@@ -24,6 +24,7 @@ var weapon := ""
 var aspect := 0
 var stats_specials := 0
 var stats_forge := 0
+var stats_rewards := 0
 var _logged_doors := -1
 var _spec_state := {}
 var god := false ## keep the bot alive to walk the whole run (balance runs leave it off)
@@ -171,6 +172,14 @@ func _physics_process(delta: float) -> void:
 					p.special_aim = Vector2.ZERO # quick tap: auto-aim
 					p.hold = 2
 			p.dash = frame % 97 == 0
+		elif arena.rewards and arena.rewards.bot_target(h) != Vector2.INF:
+			# walk to the chamber's reward (boon orb, forge, chalice, gold...) or a shop ware, and use it
+			var rt: Vector2 = arena.rewards.bot_target(h)
+			p.move = (rt - h.position).normalized()
+			if h.position.distance_to(rt) < 90.0 and frame % 10 == 0 and not (arena.hud.boon_panel and is_instance_valid(arena.hud.boon_panel)):
+				if arena.rewards.interact(h):
+					stats_rewards += 1
+					print("%s: used reward in room %d (gold=%d shards=%d purchases=%d)" % [role.to_upper(), arena.room_index, Game.run_gold, Game.run_shards, arena.rewards.purchases])
 		elif arena.door_open:
 			# choose the exit: prefer the Forge to exercise it, otherwise alternate
 			var k: int = arena.room_index % arena.door_points.size()
@@ -239,6 +248,10 @@ func _event_shots() -> void:
 			tag = "cast"
 	if arena.door_open and arena.door_points.size() > 1:
 		tag = "doors"
+	if arena.rewards and arena.rewards.has_pending():
+		tag = "reward"
+	if arena.rewards and is_instance_valid(arena.rewards.shop):
+		tag = "shop"
 	if arena.hud.boon_panel and is_instance_valid(arena.hud.boon_panel) and arena.room_reward == "forge":
 		tag = "forge"
 	if is_instance_valid(arena.hud._card) and arena.hud._card.modulate.a > 0.95:
@@ -256,5 +269,5 @@ func _quit() -> void:
 	for f in fps_samples: avg += f
 	if fps_samples.size() > 0: avg /= fps_samples.size()
 	print("%s: hazard_frames=%d killer=%s bosses=%s chapter=%d props_broken=%d" % [role.to_upper(), hazard_frames, Game.run_killer, Game.run_bosses, Game.run_chapter, arena.props_broken if is_instance_valid(arena) else -1])
-	print("%s: frames=%d max_room=%d specials=%d forge_upgrades=%d gold=%d" % [role.to_upper(), frame, max_room, stats_specials, stats_forge, Game.run_gold])
+	print("%s: frames=%d max_room=%d specials=%d forge_upgrades=%d gold=%d rewards_used=%d purchases=%d" % [role.to_upper(), frame, max_room, stats_specials, stats_forge, Game.run_gold, stats_rewards, arena.rewards.purchases if is_instance_valid(arena) and arena.rewards else 0])
 	get_tree().quit()

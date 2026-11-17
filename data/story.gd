@@ -28,6 +28,8 @@ const SPEAKERS := {
 		"voice": {"gender": "male", "age": "52", "tone": "chirpy, salesy, talks fast, sad underneath", "accent": "London"}},
 	"corwin": {"name": "Sergeant Corwin", "color": Color(0.6, 0.85, 0.95), "portrait": "res://art/ui/portrait_corwin.png",
 		"voice": {"gender": "male", "age": "55 (ghost)", "tone": "clipped, deadpan, military, secretly kind", "accent": "crisp standard English"}},
+	"wick": {"name": "Mister Wick", "color": Color(0.72, 1.0, 0.55), "portrait": "res://art/ui/portrait_wick.png",
+		"voice": {"gender": "male", "age": "60s (dead, he won't say)", "tone": "cheerful, creepy, sing-song salesman, cackles", "accent": "West Country"}},
 	"wren": {"name": "Wren", "color": Color(0.95, 0.5, 0.55), "portrait": "res://art/ui/portrait_wren.png",
 		"voice": {"gender": "female", "age": "17", "tone": "fast, cheeky, bossy about food", "accent": "Liverpool"}},
 	"osric": {"name": "Osric the Gravekeeper", "color": Color(0.75, 0.72, 0.6), "portrait": "res://art/ui/portrait_osric.png",
