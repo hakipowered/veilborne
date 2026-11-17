@@ -2,21 +2,23 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cn40h0a3vah8r"
-path="res://.godot/imported/kaela_3.webp-e61c00a1d0e092257cc40b8a174d0015.ctex"
+uid="uid://cenh13n3ntud7"
+path.bptc="res://.godot/imported/kaela_3.webp-e61c00a1d0e092257cc40b8a174d0015.bptc.ctex"
+path.astc="res://.godot/imported/kaela_3.webp-e61c00a1d0e092257cc40b8a174d0015.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://art/anim/kaela/kaela_3.webp"
-dest_files=["res://.godot/imported/kaela_3.webp-e61c00a1d0e092257cc40b8a174d0015.ctex"]
+dest_files=["res://.godot/imported/kaela_3.webp-e61c00a1d0e092257cc40b8a174d0015.bptc.ctex", "res://.godot/imported/kaela_3.webp-e61c00a1d0e092257cc40b8a174d0015.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0
@@ -31,4 +33,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

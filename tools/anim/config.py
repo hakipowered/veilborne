@@ -142,6 +142,12 @@ C["regent"] = {
     },
 }
 
+# Heroines: rendered WITHOUT weapons, at ~183 px/m (crisp at the manor's larger size); the equipped weapon is a painted
+# sprite drawn per frame at the hand (tools/anim/hands.py -> art/anim/<id>/hands.gd, entities/anim_sprite.gd).
+for _h in ("kaela", "liora"):
+    C[_h]["weapon_props"] = C[_h].pop("props")   # the old baked-in props (kept for reference)
+    C[_h].update({"export_hands": True, "cell": 576, "cam_size": 3.15, "ink_px": 3, "webp_q": 88, "vram_hq": True})
+
 # Downscale enemy atlases to roughly their on-screen size (keeps the APK under 100 MB).
 
 # ---------------------------------------------------------------- chapter enemies + generals (Meshy rigs in src/<kind>/)

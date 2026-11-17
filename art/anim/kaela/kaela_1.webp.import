@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ck3chqdspv81d"
-path.s3tc="res://.godot/imported/kaela_1.webp-76b3f578245312b02c84bc01816219b0.s3tc.ctex"
-path.etc2="res://.godot/imported/kaela_1.webp-76b3f578245312b02c84bc01816219b0.etc2.ctex"
+uid="uid://wfxtyu7q2l68"
+path.bptc="res://.godot/imported/kaela_1.webp-76b3f578245312b02c84bc01816219b0.bptc.ctex"
+path.astc="res://.godot/imported/kaela_1.webp-76b3f578245312b02c84bc01816219b0.astc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -13,12 +13,12 @@ metadata={
 [deps]
 
 source_file="res://art/anim/kaela/kaela_1.webp"
-dest_files=["res://.godot/imported/kaela_1.webp-76b3f578245312b02c84bc01816219b0.s3tc.ctex", "res://.godot/imported/kaela_1.webp-76b3f578245312b02c84bc01816219b0.etc2.ctex"]
+dest_files=["res://.godot/imported/kaela_1.webp-76b3f578245312b02c84bc01816219b0.bptc.ctex", "res://.godot/imported/kaela_1.webp-76b3f578245312b02c84bc01816219b0.astc.ctex"]
 
 [params]
 
 compress/mode=2
-compress/high_quality=false
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0

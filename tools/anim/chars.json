@@ -11,44 +11,12 @@
    "res://tools/anim/fbx_tmp/l_run.fbx"
   ],
   "up_axis": 2,
-  "cell": 288,
+  "cell": 576,
   "ss": 2,
-  "cam_size": 3.04,
+  "cam_size": 3.15,
   "center_y": 0.9,
   "elev": 40,
   "height_m": 1.72,
-  "props": [
-   {
-    "type": "crescent",
-    "bone": "RightHand",
-    "pos": [
-     0,
-     0.08,
-     0
-    ],
-    "rot": [
-     0,
-     0,
-     0
-    ],
-    "curve": 1
-   },
-   {
-    "type": "crescent",
-    "bone": "LeftHand",
-    "pos": [
-     0,
-     0.08,
-     0
-    ],
-    "rot": [
-     0,
-     0,
-     0
-    ],
-    "curve": -1
-   }
-  ],
   "anims": {
    "idle": {
     "clip": "Combat_Stance",
@@ -229,7 +197,43 @@
     "fps": 14,
     "loop": false
    }
-  }
+  },
+  "weapon_props": [
+   {
+    "type": "crescent",
+    "bone": "RightHand",
+    "pos": [
+     0,
+     0.08,
+     0
+    ],
+    "rot": [
+     0,
+     0,
+     0
+    ],
+    "curve": 1
+   },
+   {
+    "type": "crescent",
+    "bone": "LeftHand",
+    "pos": [
+     0,
+     0.08,
+     0
+    ],
+    "rot": [
+     0,
+     0,
+     0
+    ],
+    "curve": -1
+   }
+  ],
+  "export_hands": true,
+  "ink_px": 3,
+  "webp_q": 88,
+  "vram_hq": true
  },
  "kaela": {
   "model": "res://tools/anim/fbx_tmp/k_a0.fbx",
@@ -245,28 +249,12 @@
    "res://tools/anim/fbx_tmp/l_a6.fbx"
   ],
   "up_axis": 2,
-  "cell": 480,
+  "cell": 576,
   "ss": 2,
-  "cam_size": 4.78,
+  "cam_size": 3.15,
   "center_y": 0.9,
   "elev": 40,
   "height_m": 1.75,
-  "props": [
-   {
-    "type": "spear",
-    "bone": "RightHand",
-    "pos": [
-     0,
-     0.08,
-     0
-    ],
-    "rot": [
-     90,
-     0,
-     0
-    ]
-   }
-  ],
   "anims": {
    "idle": {
     "clip": "Combat_Stance",
@@ -439,7 +427,27 @@
     "fps": 14,
     "loop": false
    }
-  }
+  },
+  "weapon_props": [
+   {
+    "type": "spear",
+    "bone": "RightHand",
+    "pos": [
+     0,
+     0.08,
+     0
+    ],
+    "rot": [
+     90,
+     0,
+     0
+    ]
+   }
+  ],
+  "export_hands": true,
+  "ink_px": 3,
+  "webp_q": 88,
+  "vram_hq": true
  },
  "shade": {
   "model": "shade/model.glb",

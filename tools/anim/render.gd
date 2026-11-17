@@ -17,6 +17,7 @@ var skel: Skeleton3D
 var toon_shader: Shader
 var outline_shader: Shader
 var ss := 2
+var hands_only := false   ## --hands: only export hand data (no images)
 
 
 func _ready() -> void:
@@ -26,6 +27,7 @@ func _ready() -> void:
 		var kv := s.split("=", true, 1)
 		args[kv[0]] = kv[1] if kv.size() > 1 else "1"
 	char_id = args.get("char", "kaela")
+	hands_only = args.has("hands")
 	var all: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tools/anim/chars.json"))
 	cfg = all[char_id]
 	ss = int(cfg.get("ss", 2))
@@ -345,8 +347,10 @@ func _render(anims: Array, dirs: Array, still: bool) -> void:
 				_lock_props(ad)
 				await RenderingServer.frame_post_draw
 				await RenderingServer.frame_post_draw
-				var img := vp.get_texture().get_image()
-				img.save_png("%s/%s/d%d_%02d.png" % [out_root, an, d, i])
+				if not hands_only:
+					var img := vp.get_texture().get_image()
+					img.save_png("%s/%s/d%d_%02d.png" % [out_root, an, d, i])
+				_export_hands("%s/%s/d%d_%02d.json" % [out_root, an, d, i])
 				if still:
 					break
 		print("rendered ", an)
@@ -480,10 +484,34 @@ func _render_retarget(an: String, ad: Dictionary, dirs: Array, still: bool, out_
 			_lock_props(ad)
 			await RenderingServer.frame_post_draw
 			await RenderingServer.frame_post_draw
-			vp.get_texture().get_image().save_png("%s/%s/d%d_%02d.png" % [out_root, an, d, i])
+			if not hands_only:
+				vp.get_texture().get_image().save_png("%s/%s/d%d_%02d.png" % [out_root, an, d, i])
+			_export_hands("%s/%s/d%d_%02d.json" % [out_root, an, d, i])
 			if still:
 				break
 	print("rendered ", an)
+
+
+## Per-frame hand data for weapons drawn at runtime (cfg "export_hands"): camera-space (x right, y up, z toward the
+## camera, metres) origin + basis columns of each hand bone, the chest and the character root. tools/anim/hands.py
+## turns them into per-weapon sprite transforms.
+func _export_hands(path: String) -> void:
+	if not cfg.get("export_hands", false) or skel == null:
+		return
+	var inv := cam.global_transform.affine_inverse()
+	var out := {}
+	for b in ["RightHand", "LeftHand", "RightForeArm", "LeftForeArm", "Spine02", "Spine01", "Spine", "Hips"]:
+		var bi := skel.find_bone(b)
+		if bi < 0:
+			continue
+		var g := inv * skel.global_transform * skel.get_bone_global_pose(bi)
+		var bs := g.basis.orthonormalized()
+		out[b] = [g.origin.x, g.origin.y, g.origin.z, bs.x.x, bs.x.y, bs.x.z, bs.y.x, bs.y.y, bs.y.z, bs.z.x, bs.z.y, bs.z.z]
+	var m := (inv * model.global_transform)
+	var mb := m.basis.orthonormalized()
+	out["root"] = [m.origin.x, m.origin.y, m.origin.z, mb.x.x, mb.x.y, mb.x.z, mb.y.x, mb.y.y, mb.y.z, mb.z.x, mb.z.y, mb.z.z]
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(out))
 
 
 ## --stride=<clip> [--rfile=<file>]: root travel of a clip (metres, world), hip height and length, for foot-plant fps.

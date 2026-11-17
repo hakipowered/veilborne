@@ -79,7 +79,7 @@ def main(char):
         imgs[p].paste(frames[k][3], (px, py))
     dst = os.path.join(PROJ, "art", "anim", char)
     os.makedirs(dst, exist_ok=True)
-    for old in glob.glob(os.path.join(dst, "%s_*.webp" % char)):
+    for old in glob.glob(os.path.join(dst, "%s_*.webp" % char)) + glob.glob(os.path.join(dst, "%s_*.webp.import" % char)):
         os.remove(old)
     total = 0
     vram = 0
@@ -91,11 +91,12 @@ def main(char):
         fn = os.path.join(dst, "%s_%d.webp" % (char, p))
         im.save(fn, "WEBP", quality=int(cfg.get("webp_q", 90)), method=6, alpha_quality=100)
         imp = fn + ".import"
-        if not os.path.exists(imp):
+        if not os.path.exists(imp) or cfg.get("vram_hq"):
             # VRAM compressed (ETC2/ASTC on Android, S3TC/BPTC on desktop): ~4x less GPU memory than lossless
             open(imp, "w").write('[remap]\n\nimporter="texture"\ntype="CompressedTexture2D"\n\n[params]\n\n'
-                                 'compress/mode=2\ncompress/high_quality=false\nmipmaps/generate=false\n'
-                                 'process/fix_alpha_border=true\nprocess/premult_alpha=false\ndetect_3d/compress_to=0\n')
+                                 'compress/mode=2\ncompress/high_quality=%s\nmipmaps/generate=false\n'
+                                 'process/fix_alpha_border=true\nprocess/premult_alpha=false\ndetect_3d/compress_to=0\n'
+                                 % ("true" if cfg.get("vram_hq") else "false"))
         total += os.path.getsize(fn)
         vram += im.width * im.height * 4
     data = {"id": char, "ref_h": ref_h, "pages": len(imgs), "anims": {}}

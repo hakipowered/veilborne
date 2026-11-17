@@ -588,7 +588,9 @@ func _interpolate() -> void:
 
 # ---------------------------------------------------------------- drawing
 
-const SPRITE_HEIGHT := 160.0
+const SPRITE_HEIGHT := 170.0
+## on-screen standing height of the painted body; the manor (hub.gd) shows her larger, beside its residents
+var sprite_height := SPRITE_HEIGHT
 const ONE_SHOTS := ["attack1", "attack2", "attack3", "special", "hurt", "run_stop"]
 var _run_speed := 0.0
 var body: AnimSprite
@@ -602,7 +604,8 @@ func _ensure_sprite() -> void:
 		return
 	body = AnimSprite.new()
 	add_child(body)
-	body.setup(hero_id, SPRITE_HEIGHT)
+	body.setup(hero_id, sprite_height)
+	body.set_weapon(weapon_id)
 	body.anim_event.connect(_on_anim_event)
 	# Additive layer for weapon smears so they glow like light, not paint.
 	fx = Node2D.new()
@@ -682,6 +685,8 @@ func _process(_delta: float) -> void:
 		var to := aim_point - position
 		if to.length() > 20.0 and _in_move.length() < 0.1:
 			facing = to.normalized()
+	if body.weapon != weapon_id:
+		body.set_weapon(weapon_id)
 	body.set_facing(facing)
 	_drive_anim()
 	body.flash = flash
@@ -692,7 +697,7 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	var trim: Color = def["trim"]
 	# Ground shadow and player ring (VFX only; the body is the painted sprite).
-	var sh := 1.0 - clampf(hop / 160.0, 0.0, 0.5)
+	var sh := (1.0 - clampf(hop / 160.0, 0.0, 0.5)) * sprite_height / 160.0
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(sh, 0.42 * sh))
 	draw_circle(Vector2.ZERO, 30, Color(0, 0, 0, 0.4))
 	draw_arc(Vector2.ZERO, 36, 0, TAU, 40, Color(trim, 0.75), 3.0)
@@ -703,7 +708,7 @@ func _draw() -> void:
 		_ghosts.pop_front()
 	if downed:
 		var frac := revive_progress / 2.0
-		draw_arc(Vector2(0, -70), 20, -PI / 2, -PI / 2 + TAU * frac, 32, Color(0.4, 1.0, 0.6), 6.0)
+		draw_arc(Vector2(0, -70 * sprite_height / 160.0), 20, -PI / 2, -PI / 2 + TAU * frac, 32, Color(0.4, 1.0, 0.6), 6.0)
 		return
 	if state == "dash":
 		for i in range(3):
@@ -718,7 +723,7 @@ func _draw() -> void:
 func _draw_weapon_fx(_trim: Color) -> void:
 	var col: Color = wdef.get("color", _trim)
 	var ang := facing.angle()
-	var center := Vector2(0, -50 - hop)
+	var center := Vector2(0, -50 * sprite_height / 160.0 - hop)
 	match state:
 		"attack":
 			match weapon_id:

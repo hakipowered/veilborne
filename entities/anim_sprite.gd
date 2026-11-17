@@ -22,6 +22,8 @@ var tint: Color = Color.WHITE:
 		tint = v
 		if _spr:
 			_spr.self_modulate = v
+		for w in _wspr:
+			w.self_modulate = v
 var flash_color: Color = Color.WHITE
 
 var character_id := ""
@@ -44,6 +46,13 @@ var _scale := 1.0
 var _done := false
 var _facing := Vector2.DOWN
 var _fit := 1.0             # per-anim time stretch from play_timed(); reset by play()
+
+## Weapon in hand (heroines): the equipped weapon's painted sprite follows the hand frame by frame, using the
+## per-frame transforms in art/anim/<id>/hands.gd (tools/anim/hands.py). Two layers: behind and in front of the body.
+var weapon := ""
+var _wback: Node2D
+var _wfront: Node2D
+var _wspr: Array[Sprite2D] = []   # per grip: [back sprite, front sprite, back, front, ...]
 
 ## enemy.gd state code (S_IDLE..S_SUMMON) -> anim; "" = recover (let the attack finish, then idle)
 const ENEMY_STATE_ANIM := ["idle", "move", "windup", "attack", "", "hurt", "windup", "attack", "windup", "charge", "windup", "cast"]
@@ -74,6 +83,8 @@ func setup(p_character_id: String, target_height_px: float) -> void:
 	current = ""
 	var first: String = "idle" if _data["anims"].has("idle") else String(_data["anims"].keys()[0])
 	play(first, true)
+	if weapon != "":
+		set_weapon(weapon)
 
 
 static func _load(id: String) -> Dictionary:
@@ -120,9 +131,92 @@ static func _load(id: String) -> Dictionary:
 				ev[int(v)] = StringName(k)
 		anims[an] = {"fps": float(a["fps"]), "loop": bool(a["loop"]), "events": ev, "n": n,
 			"rects": rects, "offs": offs, "pages": pages}
-	var res := {"anims": anims, "tex": tex, "ref_h": float(raw["ref_h"])}
+	var res := {"anims": anims, "tex": tex, "ref_h": float(raw["ref_h"]), "hands": {}, "hand_art": {}}
+	var hp := "res://art/anim/%s/hands.gd" % id
+	if ResourceLoader.exists(hp):
+		var hs: GDScript = load(hp)
+		var hraw: Dictionary = hs.get_script_constant_map().get("DATA", {}) if hs else {}
+		var art: Dictionary = hraw.get("art", {})
+		for w in art:
+			var texs: Array[Texture2D] = []
+			for ap in art[w]:
+				texs.append(load(String(ap)) as Texture2D)
+			res["hand_art"][w] = texs
+		var ha: Dictionary = hraw.get("anims", {})
+		for an in ha:
+			var per := {}
+			for w in ha[an]:
+				var dirs := []
+				for d in ha[an][w]:
+					var frames := []
+					for fr in d:
+						var grips := []
+						for g in fr:
+							grips.append([Transform2D(Vector2(g[0], g[1]), Vector2(g[2], g[3]), Vector2(g[4], g[5])), int(g[6]) == 1])
+						frames.append(grips)
+					dirs.append(frames)
+				per[w] = dirs
+			res["hands"][an] = per
 	_cache[id] = res
 	return res
+
+
+## Shows `wid` (a Game.WEAPONS id) in her hands; "" or a weapon without hand data hides it.
+func set_weapon(wid: String) -> void:
+	weapon = wid
+	if _spr == null:
+		return
+	for w in _wspr:
+		w.queue_free()
+	_wspr.clear()
+	var texs: Array = _data.get("hand_art", {}).get(wid, [])
+	if texs.is_empty():
+		_show_weapon()
+		return
+	if _wback == null:
+		_wback = Node2D.new()
+		_wfront = Node2D.new()
+		add_child(_wback)
+		move_child(_wback, _spr.get_index())
+		add_child(_wfront)
+	for t in texs:
+		for layer in [_wback, _wfront]:
+			var ws := Sprite2D.new()
+			ws.texture = t
+			ws.centered = false
+			ws.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+			ws.material = _spr.material
+			ws.self_modulate = tint
+			ws.visible = false
+			layer.add_child(ws)
+			_wspr.append(ws)
+	_apply_scale()
+	_show_weapon()
+
+
+func _show_weapon() -> void:
+	if _wspr.is_empty():
+		return
+	var per: Dictionary = _data["hands"].get(current, {})
+	var dirs: Array = per.get(weapon, [])
+	var grips: Array = []
+	if dir_index < dirs.size():
+		var frames: Array = dirs[dir_index]
+		if not frames.is_empty():
+			grips = frames[mini(frame, frames.size() - 1)]
+	for gi in _wspr.size() >> 1:
+		var back: Sprite2D = _wspr[gi * 2]
+		var front: Sprite2D = _wspr[gi * 2 + 1]
+		if gi >= grips.size():
+			back.visible = false
+			front.visible = false
+			continue
+		var g: Array = grips[gi]
+		var on_top: bool = g[1]
+		var s: Sprite2D = front if on_top else back
+		s.transform = g[0]
+		s.visible = true
+		(back if on_top else front).visible = false
 
 
 func has_anim(anim: String) -> bool:
@@ -295,11 +389,15 @@ func _show() -> void:
 		_spr.texture = tex
 	_spr.region_rect = rects[f]
 	_spr.offset = _anim["offs"][dir_index][f]
+	_show_weapon()
 
 
 func _apply_scale() -> void:
 	if _spr:
 		_spr.scale = Vector2(-_scale if mirrored else _scale, _scale)
+		if _wback:
+			_wback.scale = _spr.scale
+			_wfront.scale = _spr.scale
 
 
 func _apply_flash() -> void:
@@ -308,6 +406,8 @@ func _apply_flash() -> void:
 	if flash <= 0.0:
 		if _spr.material != _shared_mat:
 			_spr.material = _shared_mat
+			for w in _wspr:
+				w.material = _shared_mat
 		return
 	if _own_mat == null:
 		_own_mat = ShaderMaterial.new()
@@ -316,3 +416,5 @@ func _apply_flash() -> void:
 	_own_mat.set_shader_parameter("flash_color", flash_color)
 	if _spr.material != _own_mat:
 		_spr.material = _own_mat
+		for w in _wspr:
+			w.material = _own_mat

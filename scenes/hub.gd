@@ -157,6 +157,7 @@ func _spawn_hero(hid: String, at: Vector2) -> void:
 	hero_id = hid
 	var h: Node2D = HeroScript.new()
 	h.setup("p1_0", hid, true, 0, self, Game.weapon_for(hid), Game.run_aspect)
+	h.sprite_height = 240.0 # life-size beside the painted residents (NPC_H; her combat stance crouches)
 	entities.add_child(h)
 	h.position = at
 	hero_nodes[h.key] = h
