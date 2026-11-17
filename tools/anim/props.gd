@@ -102,4 +102,26 @@ static func build(p: Dictionary) -> Node3D:
 			var flip: float = float(p.get("curve", 1.0))
 			var m := _mi(bl, Color(0.86, 0.9, 1.0), Vector3(0, 0.07, 0), Vector3(0, 0 if flip > 0 else 180, 0), 0.35, Color(0.7, 0.95, 1.0))
 			root.add_child(m)
+		"scythe":
+			# long snath held a third of the way up, curved blade hanging off the top toward +X
+			var L: float = float(p.get("length", 1.95))
+			var y0: float = -L * float(p.get("grip", 0.35))
+			root.add_child(_mi(_cyl(0.034, L), Color(0.26, 0.32, 0.2), Vector3(0, y0 + L * 0.5, 0)))
+			for f in [0.3, 0.97]:
+				root.add_child(_mi(_cyl(0.032, 0.06), Color(0.55, 0.75, 0.5), Vector3(0, y0 + L * f, 0)))
+			var sb := _crescent(float(p.get("radius", 0.75)), 0.13, 0.025, 70.0)
+			root.add_child(_mi(sb, Color(0.72, 0.95, 0.85), Vector3(0, y0 + L, 0), Vector3(0, 0, -90), 0.45, Color(0.45, 1.0, 0.75)))
+		"hammer":
+			# forge hammer held near the end of the haft, glowing head along +Y
+			var H: float = float(p.get("length", 1.35))
+			var y1: float = -H * float(p.get("grip", 0.12))
+			var sz: float = float(p.get("head", 0.5))
+			root.add_child(_mi(_cyl(0.03, H), Color(0.22, 0.16, 0.12), Vector3(0, y1 + H * 0.5, 0)))
+			var hd := BoxMesh.new(); hd.size = Vector3(sz, sz * 0.6, sz * 0.6)
+			root.add_child(_mi(hd, Color(0.16, 0.15, 0.16), Vector3(0, y1 + H, 0)))
+			var fc := BoxMesh.new(); fc.size = Vector3(sz * 0.08, sz * 0.5, sz * 0.5)
+			for sx in [-1.0, 1.0]:
+				root.add_child(_mi(fc, Color(1.0, 0.45, 0.12), Vector3(sx * sz * 0.5, y1 + H, 0), Vector3.ZERO, 0.8, Color(1.0, 0.55, 0.15)))
+			var bd := BoxMesh.new(); bd.size = Vector3(sz * 1.04, sz * 0.12, sz * 0.64)
+			root.add_child(_mi(bd, Color(0.55, 0.3, 0.12), Vector3(0, y1 + H, 0)))
 	return root

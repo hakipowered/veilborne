@@ -1775,7 +1775,24 @@
     "loop": false
    }
   },
-  "out_scale": 0.85
+  "out_scale": 0.85,
+  "props": [
+   {
+    "type": "scythe",
+    "bone": "RightHand",
+    "pos": [
+     0,
+     8,
+     0
+    ],
+    "scale": 100,
+    "rot": [
+     90,
+     0,
+     0
+    ]
+   }
+  ]
  },
  "gen_anvil": {
   "model": "gen_anvil/model.glb",
@@ -1950,7 +1967,26 @@
     "loop": false
    }
   },
-  "out_scale": 0.85
+  "out_scale": 0.85,
+  "props": [
+   {
+    "type": "hammer",
+    "bone": "RightHand",
+    "pos": [
+     0,
+     8,
+     0
+    ],
+    "scale": 100,
+    "rot": [
+     90,
+     0,
+     0
+    ],
+    "length": 1.4,
+    "head": 0.55
+   }
+  ]
  },
  "gen_seneschal": {
   "model": "gen_seneschal/model.glb",
@@ -2098,5 +2134,268 @@
    }
   },
   "out_scale": 0.85
+ },
+ "bogwraith": {
+  "model": "bogwraith/model.glb",
+  "clip_files": [
+   "bogwraith/model.glb",
+   "bogwraith/run.glb"
+  ],
+  "up_axis": 1,
+  "cell": 352,
+  "ss": 2,
+  "cam_size": 3.1,
+  "center_y": 0.92,
+  "elev": 40,
+  "height_m": 1.8,
+  "anims": {
+   "idle": {
+    "clip": "Idle",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "running",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 13,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "lunge_w": {
+    "retarget": {
+     "file": "hollowchampion/a2.glb",
+     "clip": "Charged_Slash"
+    },
+    "from": 0.0,
+    "to": 0.52,
+    "frames": 5,
+    "fps": 10,
+    "loop": false
+   },
+   "lunge": {
+    "retarget": {
+     "file": "hollowchampion/a2.glb",
+     "clip": "Charged_Slash"
+    },
+    "from": 0.52,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "rake_w": {
+    "retarget": {
+     "file": "thornknight/a3.glb",
+     "clip": "Right_Hand_Sword_Slash"
+    },
+    "from": 0.0,
+    "to": 0.38,
+    "frames": 5,
+    "fps": 10,
+    "loop": false
+   },
+   "rake": {
+    "retarget": {
+     "file": "thornknight/a3.glb",
+     "clip": "Right_Hand_Sword_Slash"
+    },
+    "from": 0.38,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.7
+ },
+ "hammerwarden": {
+  "model": "hammerwarden/model.glb",
+  "clip_files": [
+   "hammerwarden/model.glb",
+   "hammerwarden/walk.glb"
+  ],
+  "up_axis": 1,
+  "cell": 384,
+  "ss": 2,
+  "cam_size": 3.7,
+  "center_y": 1.12,
+  "elev": 40,
+  "height_m": 2.2,
+  "anims": {
+   "idle": {
+    "clip": "Idle",
+    "from": 0,
+    "to": 1,
+    "frames": 10,
+    "fps": 8,
+    "loop": true
+   },
+   "move": {
+    "clip": "walking_man",
+    "from": 0,
+    "to": 1,
+    "frames": 8,
+    "fps": 8,
+    "loop": true,
+    "events": {
+     "step": [
+      0,
+      4
+     ]
+    }
+   },
+   "spin_w": {
+    "retarget": {
+     "file": "gen_anvil/a3.glb",
+     "clip": "Axe_Spin_Attack"
+    },
+    "from": 0.0,
+    "to": 0.22,
+    "frames": 4,
+    "fps": 10,
+    "loop": false
+   },
+   "spin": {
+    "retarget": {
+     "file": "gen_anvil/a3.glb",
+     "clip": "Axe_Spin_Attack"
+    },
+    "from": 0.22,
+    "to": 0.95,
+    "frames": 9,
+    "fps": 16,
+    "loop": true
+   },
+   "swing_w": {
+    "retarget": {
+     "file": "gen_anvil/a1.glb",
+     "clip": "Heavy_Hammer_Swing"
+    },
+    "from": 0.0,
+    "to": 0.5,
+    "frames": 6,
+    "fps": 10,
+    "loop": false
+   },
+   "swing": {
+    "retarget": {
+     "file": "gen_anvil/a1.glb",
+     "clip": "Heavy_Hammer_Swing"
+    },
+    "from": 0.5,
+    "to": 1.0,
+    "frames": 6,
+    "fps": 15,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "slam_w": {
+    "retarget": {
+     "file": "gen_anvil/a2.glb",
+     "clip": "Charged_Ground_Slam"
+    },
+    "from": 0.03,
+    "to": 0.42,
+    "frames": 7,
+    "fps": 10,
+    "loop": false
+   },
+   "slam": {
+    "retarget": {
+     "file": "gen_anvil/a2.glb",
+     "clip": "Charged_Ground_Slam"
+    },
+    "from": 0.42,
+    "to": 0.92,
+    "frames": 6,
+    "fps": 16,
+    "loop": false,
+    "events": {
+     "hit": 1
+    }
+   },
+   "hurt": {
+    "retarget": {
+     "file": "sporeling/a3.glb",
+     "clip": "Hit_Reaction"
+    },
+    "from": 0.0,
+    "to": 0.45,
+    "frames": 4,
+    "fps": 14,
+    "loop": false
+   },
+   "death": {
+    "retarget": {
+     "file": "sporeling/a4.glb",
+     "clip": "Dead"
+    },
+    "from": 0.0,
+    "to": 0.95,
+    "frames": 10,
+    "fps": 12,
+    "loop": false
+   }
+  },
+  "out_scale": 0.75,
+  "props": [
+   {
+    "type": "hammer",
+    "bone": "RightHand",
+    "pos": [
+     0,
+     8,
+     0
+    ],
+    "scale": 100,
+    "rot": [
+     90,
+     0,
+     0
+    ],
+    "length": 1.2,
+    "head": 0.42
+   }
+  ]
  }
 }

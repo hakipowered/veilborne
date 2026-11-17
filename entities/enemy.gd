@@ -37,15 +37,13 @@ const KINDS := {
 	"regent": {"h": 260.0, "hp": 1500.0, "r": 48.0, "speed": 95.0, "hover": 6.0, "mass": 8.0, "brain": "boss_regent",
 		"boss": true, "aggro": true, "phases": [0.66, 0.33]},
 	# Chapter 2: Drowned Garden
-	"bogwraith": {"h": 150.0, "hp": 46.0, "r": 20.0, "speed": 165.0, "hover": 8.0, "mass": 1.0, "brain": "bogwraith",
-		"art": "shade", "tint": Color(0.55, 1.0, 0.8)},
+	"bogwraith": {"h": 150.0, "hp": 46.0, "r": 20.0, "speed": 165.0, "hover": 8.0, "mass": 1.0, "brain": "bogwraith"},
 	"sporeling": {"h": 118.0, "hp": 40.0, "r": 22.0, "speed": 85.0, "hover": 0.0, "mass": 1.2, "brain": "sporeling"},
 	"thornknight": {"h": 186.0, "hp": 175.0, "r": 30.0, "speed": 78.0, "hover": 0.0, "mass": 4.0, "brain": "thornknight", "elite": true},
 	# Chapter 3: Ember Forge
 	"forgegolem": {"h": 200.0, "hp": 140.0, "r": 34.0, "speed": 70.0, "hover": 0.0, "mass": 5.0, "brain": "forgegolem"},
 	"cinderimp": {"h": 104.0, "hp": 36.0, "r": 18.0, "speed": 175.0, "hover": 0.0, "mass": 0.8, "brain": "cinderimp"},
-	"hammerwarden": {"h": 206.0, "hp": 215.0, "r": 32.0, "speed": 80.0, "hover": 0.0, "mass": 5.0, "brain": "hammerwarden", "elite": true,
-		"art": "gen_anvil", "tint": Color(0.82, 0.86, 1.0)},
+	"hammerwarden": {"h": 206.0, "hp": 215.0, "r": 32.0, "speed": 80.0, "hover": 0.0, "mass": 5.0, "brain": "hammerwarden", "elite": true},
 	# Chapter 4: Hollow Throne
 	"hollowpike": {"h": 182.0, "hp": 85.0, "r": 24.0, "speed": 95.0, "hover": 0.0, "mass": 2.0, "brain": "hollowpike"},
 	"voidcaster": {"h": 166.0, "hp": 60.0, "r": 20.0, "speed": 92.0, "hover": 0.0, "mass": 1.0, "brain": "voidcaster"},

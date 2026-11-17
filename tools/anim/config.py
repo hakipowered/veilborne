@@ -236,6 +236,24 @@ pair(A, "combo", split("Triple_Combo_Attack", 0.18, 4, 12, 10, 16))
 pair(A, "cast", split("Charged_Spell_Cast", 0.2, 6, 6, 10, 14, 0.0, 0.5))
 enemy("gen_seneschal", ["model.glb", "a1.glb", "a2.glb", "a4.glb", "a9.glb", "walk.glb"], "b", A, out_scale=0.85)
 
+A = {"idle": lin("Idle", 0, 1, 10, 8, True), "move": lin("running", 0, 1, 8, 13, True, {"step": [0, 4]})}
+pair(A, "lunge", split("Charged_Slash", 0.52, 5, 6, 10, 15, src="hollowchampion/a2.glb"))
+pair(A, "rake", split("Right_Hand_Sword_Slash", 0.38, 5, 6, 10, 15, src="thornknight/a3.glb"))
+enemy("bogwraith", ["model.glb", "run.glb"], "m", A, out_scale=0.7)
+
+A = {"idle": lin("Idle", 0, 1, 10, 8, True), "move": lin("walking_man", 0, 1, 8, 8, True, {"step": [0, 4]}),
+     "spin_w": rt("gen_anvil/a3.glb", "Axe_Spin_Attack", 0.0, 0.22, 4, 10),
+     "spin": rt("gen_anvil/a3.glb", "Axe_Spin_Attack", 0.22, 0.95, 9, 16, True)}
+pair(A, "swing", split("Heavy_Hammer_Swing", 0.5, 6, 6, 10, 15, src="gen_anvil/a1.glb"))
+pair(A, "slam", split("Charged_Ground_Slam", 0.42, 7, 6, 10, 16, 0.03, 0.92, "gen_anvil/a2.glb"))
+enemy("hammerwarden", ["model.glb", "walk.glb"], "l", A, out_scale=0.75,
+      props=[{"type": "hammer", "bone": "RightHand", "pos": [0, 8, 0], "scale": 100, "rot": [90, 0, 0], "length": 1.2, "head": 0.42}])
+
+# GLB rigs carry a 0.01 armature scale, so props on them use scale 100 (pos in cm)
+# weapons (procedural props, tools/anim/props.gd): Maren's scythe, Hollis's forge hammer
+C["gen_bloom"]["props"] = [{"type": "scythe", "bone": "RightHand", "pos": [0, 8, 0], "scale": 100, "rot": [90, 0, 0]}]
+C["gen_anvil"]["props"] = [{"type": "hammer", "bone": "RightHand", "pos": [0, 8, 0], "scale": 100, "rot": [90, 0, 0], "length": 1.4, "head": 0.55}]
+
 # Hollow Regent (final boss, 3 phases): phase roar + ground slam retargeted from the other rigs
 C["regent"]["anims"]["roar"] = rt("gen_bloom/a5.glb", "Shouting_Angrily", 0, 1, 12, 10)
 C["regent"]["anims"]["slam_w"], C["regent"]["anims"]["slam"] = split("Charged_Ground_Slam", 0.42, 7, 6, 10, 16, 0.03, 0.92, "forgegolem/a3.glb")
