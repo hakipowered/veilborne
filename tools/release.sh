@@ -45,15 +45,16 @@ if [ "$MODE" = base ]; then
   mv build/signed/*.apk build/Veilborne.apk
   FILE=build/Veilborne.apk; ID="apk-$CODE"
 else
-  git rev-parse -q --verify "refs/tags/apk-$BASE" >/dev/null || git fetch -q origin "refs/tags/apk-$BASE:refs/tags/apk-$BASE" \
-    || { echo "No tag apk-$BASE: make a --base release first." >&2; exit 1; }
+  # Each full release is remembered as branch apk-<code> (tag pushes are refused here).
+  git fetch -q origin "refs/heads/apk-$BASE:refs/remotes/origin/apk-$BASE" \
+    || { echo "No branch apk-$BASE: make a --base release first." >&2; exit 1; }
   echo "Releasing content pack v$NAME (code $CODE) on top of APK $BASE"
-  CHANGED=$(git diff --name-only --diff-filter=AMR "apk-$BASE" HEAD)
+  CHANGED=$(git diff --name-only --diff-filter=AMR "origin/apk-$BASE" HEAD)
   # Things only a full APK can change: they are read before the pack is loaded.
   if echo "$CHANGED" | grep -qxE 'project\.godot|autoload/boot\.gd|export_presets\.cfg|icon\.(png|svg)'; then
     echo "project.godot / boot.gd / icon changed since APK $BASE: use --base." >&2; exit 1
   fi
-  if git diff "apk-$BASE" HEAD -- '*.gd' | grep -qE '^\+class_name '; then
+  if git diff "origin/apk-$BASE" HEAD -- '*.gd' | grep -qE '^\+class_name '; then
     echo "A script gained a class_name since APK $BASE: use --base." >&2; exit 1
   fi
   FILES=$(echo "$CHANGED" | grep -vE '^(tools|tests|docs|build)/|\.md$|^\.git|\.gdignore$' | sed 's/\.import$//' | sort -u \
@@ -118,6 +119,6 @@ git -C "$PUB" -c user.name="$(git config user.name || echo hakipowered)" -c user
 git -C "$PUB" push -q -f "$(git remote get-url origin)" downloads
 rm -rf "$PUB"
 if [ "$MODE" = base ]; then
-  git tag -f "apk-$CODE" HEAD && git push -q -f origin "refs/tags/apk-$CODE"
+  git push -q -f origin "HEAD:refs/heads/apk-$CODE"
 fi
 echo "Pushed $ID. NEXT: write build/manifest.json to Workers KV key 'pending'; it goes live once $DL/status shows it ready."
