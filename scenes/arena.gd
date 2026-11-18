@@ -133,8 +133,9 @@ func _ready() -> void:
 	camera = Camera2D.new()
 	camera.position_smoothing_enabled = true
 	camera.position_smoothing_speed = 6.0
-	camera.zoom = Vector2(1.1, 1.1)
 	add_child(camera)
+	_fit_zoom()
+	get_viewport().size_changed.connect(_fit_zoom)
 	camera.make_current()
 	hud = HudScript.new()
 	add_child(hud)
@@ -249,6 +250,18 @@ func nearest_hero(pos: Vector2) -> Node:
 				bd = d
 				best = h
 	return best
+
+## Camera framing like Hades: the heroine stands about an eighth of the screen tall and most of the
+## chamber is in view. Narrower screens (4:3 tablets) pull back a little more so the sides aren't cut.
+const CAMERA_ZOOM := 0.64
+
+func _fit_zoom() -> void:
+	if camera == null:
+		return
+	var vs := get_viewport().get_visible_rect().size
+	var ratio := vs.x / maxf(1.0, vs.y)
+	var z := CAMERA_ZOOM * sqrt(minf(1.0, ratio / (16.0 / 9.0)))
+	camera.zoom = Vector2(z, z)
 
 func resolve_collision(pos: Vector2, radius: float) -> Vector2:
 	return env.resolve(pos, radius)
@@ -1866,11 +1879,14 @@ func _draw_overlay() -> void:
 		overlay.draw_polyline(pts, Color(0.7, 0.9, 1.0, arc[2] * 4.0), 4.0)
 		overlay.draw_polyline(pts, Color(1, 1, 1, arc[2] * 4.0), 1.5)
 	var font := ThemeDB.fallback_font
+	# damage numbers keep their on-screen size however far the camera is pulled back
+	var k := clampf(1.0 / maxf(0.3, camera.zoom.x), 1.0, 2.0) if camera else 1.0
 	for t in texts:
 		var a: float = clampf(t[3] * 2.0, 0.0, 1.0)
-		var size := 30 if String(t[1]).ends_with("!") else 24
-		overlay.draw_string_outline(font, t[0] - Vector2(80, 0), t[1], HORIZONTAL_ALIGNMENT_CENTER, 160, size, 6, Color(0.05, 0.02, 0.05, a))
-		overlay.draw_string(font, t[0] - Vector2(80, 0), t[1], HORIZONTAL_ALIGNMENT_CENTER, 160, size, Color(t[2], a))
+		var size := int(round((30 if String(t[1]).ends_with("!") else 24) * k))
+		var bw := 160.0 * k
+		overlay.draw_string_outline(font, t[0] - Vector2(bw * 0.5, 0), t[1], HORIZONTAL_ALIGNMENT_CENTER, bw, size, int(round(6 * k)), Color(0.05, 0.02, 0.05, a))
+		overlay.draw_string(font, t[0] - Vector2(bw * 0.5, 0), t[1], HORIZONTAL_ALIGNMENT_CENTER, bw, size, Color(t[2], a))
 
 # ---------------------------------------------------------------- weapon / special / exit drawing
 
