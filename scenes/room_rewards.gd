@@ -288,6 +288,8 @@ func _buy(o: Node2D, h: Node) -> bool:
 
 ## Uses the reward / ware nearest to heroine h (within reach). Returns true when something was used.
 func interact(h: Node = null) -> bool:
+	if arena != null and arena.hud != null and is_instance_valid(arena.hud.boon_panel):
+		return false # a choice is open: finish it first
 	if h == null:
 		h = _near_hero
 	var o := _nearest(h)
@@ -379,7 +381,7 @@ func _nearest(h: Node) -> Node2D:
 	for o in objects:
 		if not is_instance_valid(o) or o.taken:
 			continue
-		var d: float = h.position.distance_to(o.global_position)
+		var d: float = o.use_distance(h.position)
 		if d < o.reach and d < bd:
 			bd = d
 			best = o
@@ -394,7 +396,7 @@ func bot_target(h: Node) -> Vector2:
 			continue
 		if o.price > 0 and (Game.run_gold < o.price or purchases > 0):
 			continue
-		return o.global_position
+		return o.use_point()
 	return Vector2.INF
 
 
@@ -409,6 +411,19 @@ func _physics_process(delta: float) -> void:
 	_t += delta
 	if arena == null or arena.run_over:
 		return
+	# while cards (or any other choice) are up, the counter's price tags and the buy prompt step aside
+	var busy: bool = arena.hud != null and is_instance_valid(arena.hud.boon_panel)
+	for o in objects:
+		if is_instance_valid(o):
+			o.set_tag_visible(not busy)
+	if busy:
+		if is_instance_valid(_near):
+			_near.set_near(false)
+		_near = null
+		_near_hero = null
+		if _prompt_box and _prompt_box.visible:
+			_prompt_box.visible = false
+		return
 	var nh: Node = null
 	var no: Node2D = null
 	var bd := INF
@@ -421,7 +436,7 @@ func _physics_process(delta: float) -> void:
 		if o.auto:
 			_use(o, h)
 			continue
-		var d: float = h.position.distance_to(o.global_position)
+		var d: float = o.use_distance(h.position)
 		if d < bd:
 			bd = d
 			no = o

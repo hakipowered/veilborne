@@ -142,15 +142,15 @@ const HOLD_DELAY := 0.2          ## s ATTACK must stay held (after the tap's swi
 ## In-run weapon upgrades from the Forge reward. Stored per hero in boons["_forge"] = {id: {level, rarity}}.
 const FORGE := [
 	{"id": "spear_echo", "weapon": "spear", "name": "Echo Flare", "desc": "The lodged lance flares a second time for %d%% damage.", "stat": "w_twice", "values": [50, 75, 100], "step": 25},
-	{"id": "spear_comet", "weapon": "spear", "name": "Comet Thrust", "desc": "Each dash ends in a spear thrust for %d damage.", "stat": "w_dash_strike", "values": [18, 28, 40], "step": 10},
+	{"id": "spear_comet", "weapon": "spear", "name": "Comet Thrust", "desc": "Your dash drives the lance through foes in your path for %d damage.", "stat": "w_dash_strike", "values": [18, 28, 40], "step": 10},
 	{"id": "spear_haft", "weapon": "spear", "name": "Long Haft", "desc": "Thrusts and Cinder Whirl reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40], "step": 10},
 	{"id": "spear_cinder", "weapon": "spear", "name": "Trail of Cinders", "desc": "The lodged lance burns the ground around it (%d damage/sec).", "stat": "w_pool", "values": [10, 16, 24], "step": 6},
 	{"id": "twin_wane", "weapon": "twin", "name": "Lingering Moon", "desc": "Moonstep's afterimages cut for +%d%% damage.", "stat": "w_whirl", "values": [40, 70, 100], "step": 25},
 	{"id": "twin_home", "weapon": "twin", "name": "Homeward Crescent", "desc": "After Moonstep a crescent flies back along your path, cutting for %d%% damage.", "stat": "w_return", "values": [60, 90, 130], "step": 30},
-	{"id": "twin_step", "weapon": "twin", "name": "Moonlit Step", "desc": "Dashing slashes foes you pass for %d.", "stat": "w_dash_strike", "values": [14, 22, 32], "step": 8},
+	{"id": "twin_step", "weapon": "twin", "name": "Passing Fang", "desc": "Your dash slashes every foe you pass for %d damage.", "stat": "w_dash_strike", "values": [14, 22, 32], "step": 8},
 	{"id": "twin_quick", "weapon": "twin", "name": "Quickened Edges", "desc": "Attack %d%% faster.", "stat": "w_speed", "values": [12, 20, 30], "step": 6},
 	{"id": "bow_pierce", "weapon": "bow", "name": "Piercing Fletch", "desc": "Arrows pierce %d more foes.", "stat": "w_pierce", "values": [1, 2, 3], "step": 1},
-	{"id": "bow_split", "weapon": "bow", "name": "Split Shot", "desc": "Fully drawn shots split into %d extra arrows.", "stat": "w_split", "values": [2, 2, 4], "step": 1},
+	{"id": "bow_split", "weapon": "bow", "name": "Split Shot", "desc": "Fully drawn shots split into %d extra arrows.", "stat": "w_split", "values": [2, 3, 4], "step": 1},
 	{"id": "bow_draw", "weapon": "bow", "name": "Quick Draw", "desc": "Draw %d%% faster.", "stat": "w_charge", "values": [25, 40, 60], "step": 15},
 	{"id": "bow_rain", "weapon": "bow", "name": "Endless Rain", "desc": "The volley lands %d more waves.", "stat": "w_pulses", "values": [1, 2, 3], "step": 1},
 	{"id": "shield_rebound", "weapon": "shield", "name": "Rebound Rim", "desc": "The thrown shield ricochets to %d more foes.", "stat": "w_ricochet", "values": [1, 2, 3], "step": 1},

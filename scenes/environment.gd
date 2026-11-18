@@ -659,6 +659,52 @@ func resolve(pos: Vector2, radius: float) -> Vector2:
 			pos = o["pos"] + d
 	return pos
 
+## Dash leaps: like resolve(), but pits and chasms inside the room don't stop her (she is in the air over
+## them). Solid props and the room's outer edge still do.
+func resolve_leap(pos: Vector2, radius: float) -> Vector2:
+	pos = _shape.resolve(pos, 0.0)
+	for o in _obstacles:
+		if o.has("pit"):
+			continue
+		var d: Vector2 = pos - o["pos"]
+		d.y *= 2.0
+		var rr: float = o["radius"] + radius
+		var l := d.length()
+		if l < rr:
+			if l < 0.001:
+				d = Vector2(1, 0)
+				l = 1.0
+			d = d / l * rr
+			d.y *= 0.5
+			pos = o["pos"] + d
+	return pos
+
+## True when a walker of ground radius `radius` can stand at pos: on the floor, outside pits and solid props.
+func can_stand(pos: Vector2, radius: float) -> bool:
+	if not _shape.on_floor(pos, radius * 0.5):
+		return false
+	for o in _obstacles:
+		var d: Vector2 = pos - o["pos"]
+		d.y *= 2.0
+		if d.length() < o["radius"] + radius * 0.5:
+			return false
+	return true
+
+## A solid prop (not a pit) covers pos for a walker of ground radius `radius`.
+func prop_at(pos: Vector2, radius: float) -> bool:
+	for o in _obstacles:
+		if o.has("pit"):
+			continue
+		var d: Vector2 = pos - o["pos"]
+		d.y *= 2.0
+		if d.length() < o["radius"] + radius * 0.5:
+			return true
+	return false
+
+## Over the room (floor, chasm or pit) rather than outside its outer edge.
+func in_room(pos: Vector2) -> bool:
+	return _shape.in_hull(pos)
+
 ## World rect the camera may show without leaving painted space (optional camera limits).
 func get_camera_limits() -> Rect2:
 	var b: Rect2 = _shape.bounds
@@ -1918,7 +1964,13 @@ func _lava_pool(c: Vector2, r: float) -> void:
 	add_child(e)
 
 func _lava_channel(pts: PackedVector2Array, w: float) -> void:
-	# densify, then offset into a strip (UV.x = length / 256, UV.y across)
+	# densify, then offset into a strip (UV.x = length / 256, UV.y across). The course runs on past both
+	# ends by about a half-width: the shader rounds the ends off there (no straight cut across the lava)
+	pts = pts.duplicate()
+	if pts.size() >= 2:
+		pts[0] = pts[0] - (pts[1] - pts[0]).normalized() * w * 0.8
+		var n_ := pts.size()
+		pts[n_ - 1] = pts[n_ - 1] + (pts[n_ - 1] - pts[n_ - 2]).normalized() * w * 0.8
 	var line := PackedVector2Array()
 	for i in range(pts.size() - 1):
 		var steps := maxi(1, int(pts[i].distance_to(pts[i + 1]) / 40.0))
@@ -1931,6 +1983,7 @@ func _lava_channel(pts: PackedVector2Array, w: float) -> void:
 	var along := 0.0
 	var left := PackedVector2Array()
 	var right := PackedVector2Array()
+	var alongs := PackedFloat32Array()
 	for i in range(line.size()):
 		var a := line[maxi(i - 1, 0)]
 		var b := line[mini(i + 1, line.size() - 1)]
@@ -1945,6 +1998,7 @@ func _lava_channel(pts: PackedVector2Array, w: float) -> void:
 		uvs.append(Vector2(along / 256.0, 1.0))
 		left.append(line[i] + n * hw * 0.85)
 		right.append(line[i] - n * hw * 0.85)
+		alongs.append(along)
 		if i > 0:
 			var k := i * 2
 			polys.append(PackedInt32Array([k - 2, k, k + 1, k - 1]))
@@ -1962,9 +2016,21 @@ func _lava_channel(pts: PackedVector2Array, w: float) -> void:
 	m.set_shader_parameter("mode", 1)
 	m.set_shader_parameter("seed", _rng.randf())
 	m.set_shader_parameter("flow", 0.22)
+	m.set_shader_parameter("len_u", along / 256.0)
+	m.set_shader_parameter("cap_u", w * 1.1 / 256.0)
 	p.material = m
 	p.z_index = -68
 	add_child(p)
+	# the burning area stops where the rounded ends begin to narrow
+	var hl := PackedVector2Array()
+	var hr := PackedVector2Array()
+	for i in range(left.size()):
+		if alongs[i] >= w * 0.55 and alongs[i] <= along - w * 0.55:
+			hl.append(left[i])
+			hr.append(right[i])
+	if hl.size() >= 2:
+		left = hl
+		right = hr
 	right.reverse()
 	var poly := left.duplicate()
 	poly.append_array(right)

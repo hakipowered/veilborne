@@ -11,6 +11,7 @@ const COUNTER_TEX := preload("res://art/env/shop/counter.png")
 const MERCHANT_TEX := preload("res://art/env/shop/merchant.png")
 const COUNTER_W := 600.0 ## world width of the counter
 const MERCHANT_H := 236.0
+const IMG_FLOOR_Y := 500.0 ## counter.png row that sits on the stall's origin
 
 ## First meeting (dialogue). "{hero}" lines are said by the heroine.
 const INTRO := [
@@ -80,13 +81,25 @@ func build(seed_value: int) -> void:
 	merchant.scale = Vector2(ms, ms)
 	merchant.offset = Vector2(-MERCHANT_TEX.get_width() * 0.5, -MERCHANT_TEX.get_height() * 0.98)
 	holder.add_child(merchant)
-	# the counter
-	var counter := Sprite2D.new()
-	counter.texture = COUNTER_TEX
-	counter.centered = false
-	counter.scale = Vector2(sc, sc)
-	counter.offset = Vector2(-COUNTER_TEX.get_width() * 0.5, -COUNTER_TEX.get_height() + 20.0)
-	add_child(counter)
+	# the counter, cut into upright slices so each one depth-sorts at its own front edge: the stall runs
+	# diagonally across the floor, so one sort point would draw a heroine standing in front of its far end
+	# behind it (she seemed to walk under the table)
+	var tw := COUNTER_TEX.get_width()
+	var slice := 125
+	var x0 := 0
+	while x0 < tw:
+		var w: int = mini(slice, tw - x0)
+		var spr := Sprite2D.new()
+		spr.texture = COUNTER_TEX
+		spr.centered = false
+		spr.region_enabled = true
+		spr.region_rect = Rect2(x0, 0, w, COUNTER_TEX.get_height())
+		spr.scale = Vector2(sc, sc)
+		var sy := front_y(x0 + w * 0.5) - 22.0
+		spr.position = Vector2(0, sy)
+		spr.offset = Vector2(x0 - tw * 0.5, -IMG_FLOOR_Y - sy / sc)
+		add_child(spr)
+		x0 += w
 	# wares along the table top (image coords of the top surface's centre line)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
@@ -96,26 +109,46 @@ func build(seed_value: int) -> void:
 		picks.append(pool.pop_at(rng.randi_range(0, pool.size() - 1)))
 	var top := [Vector2(285, 238), Vector2(435, 196), Vector2(585, 154)]
 	var ox := COUNTER_TEX.get_width() * 0.5
-	var oy := COUNTER_TEX.get_height() - 20.0
 	for i in range(picks.size()):
 		var k := String(picks[i])
 		var w: Dictionary = WARES[k]
-		var on_top: Vector2 = (top[i] - Vector2(ox, oy)) * sc
+		var on_top: Vector2 = (top[i] - Vector2(ox, IMG_FLOOR_Y)) * sc
 		var o := RewardObject.new()
-		# the ware's floor spot is in front of the counter, below where it sits
-		o.position = Vector2(on_top.x - 40.0, 40.0 - i * 6.0)
+		# sorted just in front of the counter (the art sits up on the table top); bought from the floor
+		# straight in front of where it is displayed
+		var fx: float = top[i].x + 60.0
+		o.position = Vector2((fx - ox) * sc, front_y(fx) + 4.0)
 		o.setup(k, {"tex": w["tex"], "h": 74.0, "price": int(w["price"]), "title": w["title"], "desc": w["desc"],
 			"color": Color(1.0, 0.85, 0.45), "art_offset": on_top + Vector2(0, 8) - o.position, "verb": "Buy", "auto": false})
-		o.reach = 105.0
+		o.use_axis = Vector2(510, -175).normalized() # the counter's long front, left to right
+		o.use_offset = Vector2(-o.use_axis.y, o.use_axis.x) * 50.0
+		o.reach = 70.0
 		add_child(o)
 		items.append(o)
 
 
-## Collision circles (world) for the counter, for env.get_obstacles().
+## Local y of the floor line along the counter's front (the near side of its footprint) below image column ix:
+## the short left end runs from the back-left leg (115, 465) to the front corner (240, 505), the long front
+## from there to the right-hand post (750, 330).
+static func front_y(ix: float) -> float:
+	var iy := 505.0 - 0.32 * (240.0 - ix) if ix < 240.0 else 505.0 - 0.343 * (ix - 240.0)
+	return (iy - IMG_FLOOR_Y) * COUNTER_W / COUNTER_TEX.get_width()
+
+
+## Collision (world) for the counter, for env.get_obstacles(): flat ellipses down the middle of its footprint
+## (front corner, right post and back-left leg in image px: (240, 505), (750, 330), (115, 465)), close enough
+## together that no gap lets a heroine slip under the table, plus Mister Wick.
 func obstacles() -> Array:
+	var sc := COUNTER_W / COUNTER_TEX.get_width()
+	var f := (Vector2(240, 505) - Vector2(COUNTER_TEX.get_width() * 0.5, IMG_FLOOR_Y)) * sc
+	var r := (Vector2(750, 330) - Vector2(COUNTER_TEX.get_width() * 0.5, IMG_FLOOR_Y)) * sc
+	var depth := (Vector2(115, 465) - Vector2(240, 505)) * sc
 	var a: Array = []
-	for f in [-0.36, -0.12, 0.12, 0.36]:
-		a.append({"pos": position + Vector2(f * COUNTER_W, -55.0 - f * 170.0), "radius": 70.0})
+	var n := 9
+	for i in range(n):
+		var t := float(i) / float(n - 1)
+		a.append({"pos": position + f.lerp(r, t) + depth * 0.5, "radius": 48.0})
+	a.append({"pos": position + f + depth * 0.15 + Vector2(-20, 0), "radius": 48.0})
 	a.append({"pos": position + Vector2(-60, -175), "radius": 40.0})
 	return a
 

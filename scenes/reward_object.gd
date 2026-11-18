@@ -30,6 +30,26 @@ var auto := false ## picked up by walking over it
 var taken := false
 var reach := 120.0 ## interaction radius around `position` (the floor spot)
 var art_offset := Vector2.ZERO ## art drawn away from the floor spot (wares sit up on the counter)
+var use_offset := Vector2.ZERO ## where a heroine stands to use it, from `position` (wares: the floor in front of the counter)
+
+
+var use_axis := Vector2.ZERO ## wares: unit vector along the counter; picking favours the ware she is level with
+
+
+## World point a heroine walks to / is measured from to use this object.
+func use_point() -> Vector2:
+	return global_position + use_offset
+
+
+## How far `p` is from using this object, compared with `reach`. Along a counter, sideways distance counts
+## in full and distance out from the counter only a third, so standing in front of a ware picks that ware.
+func use_distance(p: Vector2) -> float:
+	var d := p - use_point()
+	if use_axis == Vector2.ZERO:
+		return d.length()
+	var along := d.dot(use_axis)
+	var out := d.dot(Vector2(-use_axis.y, use_axis.x))
+	return Vector2(along, out * 0.33).length()
 
 var _t := 0.0
 var _ph := 0.0
@@ -225,6 +245,11 @@ func _draw_tag() -> void:
 	if font:
 		_tag.draw_string(font, Vector2(rect.position.x + 40, 9), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
 			Color(1.0, 0.86, 0.45) if afford else Color(0.85, 0.5, 0.45))
+
+
+func set_tag_visible(on: bool) -> void:
+	if _tag:
+		_tag.visible = on
 
 
 func set_near(on: bool) -> void:

@@ -6,6 +6,8 @@ uniform int mode = 0;
 uniform float pad = 1.12;
 uniform float seed = 0.0;
 uniform float flow = 0.18;
+uniform float len_u = 0.0; // channels: strip length in UV.x units (0 = no rounded ends)
+uniform float cap_u = 0.2; // channels: how far in from each end the rounding reaches
 uniform vec4 hot : source_color = vec4(1.0, 0.92, 0.55, 1.0);
 uniform vec4 mid : source_color = vec4(1.0, 0.38, 0.06, 1.0);
 uniform vec4 crust : source_color = vec4(0.16, 0.05, 0.035, 1.0);
@@ -28,8 +30,18 @@ void fragment() {
 		fuv = world / 190.0 + vec2(TIME * flow * 0.08, TIME * flow * 0.05);
 	} else {
 		float x = abs(UV.y - 0.5) * 2.0;
-		float n = texture(noise_tex, vec2(UV.x * 0.37 + seed, 0.2)).r;
-		float e = 0.86 + 0.14 * n;
+		// rounded, ragged ends instead of a straight cut across the strip
+		if (len_u > 0.0) {
+			float d = min(UV.x, len_u - UV.x) / cap_u;
+			if (d < 1.0) {
+				x = length(vec2(x, 1.0 - max(d, 0.0)));
+			}
+		}
+		// each bank gets its own ragged line (two octaves), so the edges don't run parallel
+		float side = UV.y > 0.5 ? 0.71 : 0.23;
+		float n = texture(noise_tex, vec2(UV.x * 0.37 + seed, side)).r * 0.65
+			+ texture(noise_tex, vec2(UV.x * 1.3 + seed * 1.7, side + 0.31)).g * 0.35;
+		float e = 0.8 + 0.2 * n;
 		inside = 1.0 - smoothstep(e - 0.05, e, x);
 		edge = clamp((e - x) / 0.45, 0.0, 1.0);
 		fuv = vec2(UV.x * 1.9 - TIME * flow, UV.y * 0.8 + seed);

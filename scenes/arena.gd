@@ -253,6 +253,35 @@ func nearest_hero(pos: Vector2) -> Node:
 func resolve_collision(pos: Vector2, radius: float) -> Vector2:
 	return env.resolve(pos, radius)
 
+## How far (px) a dash from `from` along `dir` should run so it clears a gap (pit or chasm) in its way:
+## `length` when the path stays on the floor or the gap is too wide to clear, otherwise the distance to
+## solid ground on the far side (at most 1.7 x length). Returns [distance, leaps].
+func dash_plan(from: Vector2, dir: Vector2, length: float) -> Array:
+	if not env.has_method("can_stand"):
+		return [length, false]
+	var step := 8.0
+	var t := step
+	var gap := false
+	while t <= length * 1.7:
+		var p := from + dir * t
+		if not env.in_room(p):
+			return [length, false] # the room's outer edge: no leaping out of the chamber
+		if env.prop_at(p, 16.0):
+			return [length, false] # a pillar or crate in the way stops the dash as usual
+		if not env.can_stand(p, 16.0):
+			if t > length and not gap:
+				return [length, false] # the gap starts past where the dash ends anyway
+			gap = true
+		elif gap:
+			# far side: make sure there is a little floor to land on
+			if env.can_stand(p + dir * 14.0, 16.0):
+				return [maxf(length, t + 18.0), true]
+		t += step
+	return [length, false]
+
+func resolve_leap(pos: Vector2, radius: float) -> Vector2:
+	return env.resolve_leap(pos, radius) if env.has_method("resolve_leap") else env.resolve(pos, radius)
+
 ## Walker heading for target: its move turned round chasms / void when the straight line is blocked.
 func steer(pos: Vector2, target: Vector2, move: Vector2, radius := 16.0) -> Vector2:
 	return env.steer(pos, target, move, radius) if env.has_method("steer") else move

@@ -52,6 +52,9 @@ var special_to := Vector2.ZERO
 var special_time := 0.6
 var special_hit := 0.4
 var hop := 0.0 ## leap height (visual)
+const DASH_TIME := 0.18
+var _leap := false ## this dash clears a pit / chasm
+var _dash_time := DASH_TIME
 var charge := 0.0 ## bow draw / hold move charge 0..1
 var hold_t := 0.0 ## how long ATTACK has been held
 var move_kind := "" ## signature move being played in the "attack" state (MOVES)
@@ -398,6 +401,11 @@ func _simulate(delta: float) -> void:
 		_set_state("dash")
 		iframes = 0.22
 		vel = dir * speed * 3.4
+		# a gap that the dash can nearly span: she leaps it (the dash runs on to the far side)
+		var plan: Array = arena.dash_plan(position, dir, speed * 3.4 * DASH_TIME) if arena.has_method("dash_plan") else [0.0, false]
+		_leap = bool(plan[1])
+		_dash_time = maxf(DASH_TIME, float(plan[0]) / (speed * 3.4)) if _leap else DASH_TIME
+		iframes = maxf(iframes, _dash_time + 0.04)
 		_buffer_t["dash"] = 0.0
 		_ghost_timer = 0.0
 		_act("dash", position, dir)
@@ -449,10 +457,15 @@ func _simulate(delta: float) -> void:
 			if _ghost_timer <= 0.0:
 				_ghost_timer = 0.035
 				_ghosts.append([position, facing.x < -0.05, 0.25])
-			if state_t > 0.18:
+			if _leap:
+				hop = sin(clampf(state_t / _dash_time, 0.0, 1.0) * PI) * 26.0
+			if state_t > _dash_time:
 				_set_state("idle")
 				_since_dash = 0.0
 				vel *= 0.25
+				if _leap:
+					hop = 0.0
+					_leap = false
 		"attack":
 			var fr := 900.0 if move_kind == "" else 2600.0
 			vel = vel.move_toward(Vector2.ZERO, fr * delta)
@@ -498,7 +511,11 @@ func _simulate(delta: float) -> void:
 			_set_state("run" if mv.length() > 0.1 else "idle", false)
 
 	position += vel * delta
-	position = arena.resolve_collision(position, 16.0)
+	if _leap and state == "dash":
+		position = arena.resolve_leap(position, 16.0)
+	else:
+		_leap = false
+		position = arena.resolve_collision(position, 16.0)
 
 func _swing() -> void:
 	move_kind = ""
