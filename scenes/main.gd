@@ -846,19 +846,22 @@ func show_coop() -> void:
 	lb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	local.add_child(lb)
 
-	var host := _mode_card(row, "glyph_special", "Host", "Open the Sanctum gate on this device. Friends on the same Wi-Fi join with your address.")
+	var host := _mode_card(row, "glyph_special", "Host Online", "Play with a friend anywhere. You get a room code to send them on WhatsApp.")
 	var hb := _button("Host Game", _start_host, "BigButton", 290, "confirm")
 	hb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	host.add_child(hb)
 
-	var join := _mode_card(row, "glyph_dash", "Join", "Enter the address shown on the host's Sanctum screen.")
+	var join := _mode_card(row, "glyph_dash", "Join Online", "Enter the room code your friend sent you.")
 	var ip := LineEdit.new()
-	ip.placeholder_text = "192.168.1.20"
-	ip.text = String(Game.data.get("last_ip", ""))
+	ip.placeholder_text = "ROOM CODE"
+	# a copied invite ("VEILBORNE ABCDE" from the invite page, or the WhatsApp message) fills it in
+	ip.text = Net.code_from_text(DisplayServer.clipboard_get()) if DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD) else ""
+	ip.add_theme_font_size_override("font_size", 30)
+	ip.max_length = 64
 	ip.custom_minimum_size = Vector2(290, 58)
 	ip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	ip.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	ip.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_URL
+	ip.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT
 	ip.text_submitted.connect(func(s: String): _start_join(s))
 	join.add_child(ip)
 	var jb := _button("Join Game", func(): _start_join(ip.text), "BigButton", 290, "confirm")
@@ -921,25 +924,31 @@ func _start_local() -> void:
 
 
 func _start_host() -> void:
-	var err: Error = Net.host_game(_my_hero())
-	if err != OK:
-		show_message("The Gate Will Not Open", "Could not host on port %d (error %d). Another game may be using it." % [Net.PORT, err])
-		return
+	Net.host_online(_my_hero())
 	coop_kind = "host"
 	show_sanctum()
 
 
+## Share the room code: WhatsApp opens with the invite ready to send to a friend.
+func _share_invite() -> void:
+	DisplayServer.clipboard_set(Net.invite_text())
+	if OS.shell_open("whatsapp://send?text=" + Net.invite_text().uri_encode()) != OK:
+		OS.shell_open("https://wa.me/?text=" + Net.invite_text().uri_encode())
+
+
+func _copy_invite() -> void:
+	DisplayServer.clipboard_set(Net.invite_text())
+	if is_instance_valid(_status_label):
+		_status_label.text = "Invite copied. Paste it to your friend anywhere."
+
+
 func _start_join(ip: String) -> void:
-	ip = ip.strip_edges()
-	if ip == "":
-		show_message("No Address", "Enter the host's address, for example 192.168.1.20.")
+	var code := Net.code_from_text(ip)
+	if code == "":
+		show_message("No Room Code", "Enter the 5-letter room code your friend sent you.")
 		return
-	var err: Error = Net.join_game(ip, _my_hero())
-	if err != OK:
-		show_message("Cannot Reach the Gate", "Could not start a connection to %s (error %d)." % [ip, err])
-		return
-	Game.data["last_ip"] = ip
-	Game.save_slot()
+	ip = code
+	Net.join_online(code, _my_hero())
 	coop_kind = "join"
 	_connect_token += 1
 	var token := _connect_token
@@ -967,7 +976,7 @@ func _start_join(ip: String) -> void:
 	var t := _label("Crossing the Veil...", "H2")
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(t)
-	var l := _label("Connecting to %s : %d" % [ip, Net.PORT], "Body")
+	var l := _label("Joining room %s" % ip, "Body")
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(l)
 	var cancel := _button("Cancel", _cancel_connect, "", 260, "back")
@@ -978,11 +987,11 @@ func _start_join(ip: String) -> void:
 	var lt := l.create_tween().set_loops()
 	lt.tween_property(l, "modulate:a", 0.4, 0.7)
 	lt.tween_property(l, "modulate:a", 1.0, 0.7)
-	get_tree().create_timer(12.0).timeout.connect(func():
+	get_tree().create_timer(20.0).timeout.connect(func():
 		if token == _connect_token and screen == "connecting":
 			Net.close()
 			show_coop()
-			show_message("No Answer", "The host at %s did not answer. Check the address and that both devices share a network." % ip))
+			show_message("No Answer", "Couldn't reach room %s. Check your internet connection and try again." % ip))
 
 
 func _cancel_connect() -> void:
@@ -999,9 +1008,15 @@ func _on_net_connected() -> void:
 
 func _on_net_failed() -> void:
 	_connect_token += 1
-	if screen == "connecting" or screen == "coop":
+	if screen == "connecting" or screen == "coop" or (screen == "sanctum" and coop_kind == "host"):
 		show_coop()
-		show_message("Connection Failed", "Could not reach the host. Check the address and your network.")
+		var why := Net.last_error
+		var msg := "Couldn't reach the co-op server. Check your internet connection and try again."
+		if why == "no_room":
+			msg = "There's no room with that code. Ask your friend to send the code again."
+		elif why == "full":
+			msg = "That room is already full."
+		show_message("Connection Failed", msg)
 
 
 func _on_net_disconnected() -> void:
@@ -1528,9 +1543,15 @@ func _refresh_lobby() -> void:
 	if online and is_instance_valid(_lobby_box):
 		for c in _lobby_box.get_children():
 			c.queue_free()
+		if Net.room_code != "":
+			var cl := _label("ROOM CODE  %s" % Net.room_code, "Gold", 30)
+			_lobby_box.add_child(cl)
 		if Net.is_host():
-			var ipl := _label("Your address  %s : %d" % [Net.local_ip(), Net.PORT], "Gold", 20)
-			_lobby_box.add_child(ipl)
+			var share := HBoxContainer.new()
+			share.add_theme_constant_override("separation", 12)
+			share.add_child(_button("Share on WhatsApp", _share_invite, "", 250, "confirm"))
+			share.add_child(_button("Copy Invite", _copy_invite, "", 190, "confirm"))
+			_lobby_box.add_child(share)
 		var head := _label("COMPANIONS  %d / %d" % [Net.lobby.size(), Net.MAX_PLAYERS], "Caps", 15)
 		_lobby_box.add_child(head)
 		for i in Net.lobby.size():

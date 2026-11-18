@@ -73,6 +73,17 @@ func _run() -> void:
 		main.coop_kind = ""
 		main.show_sanctum()
 		await _snap("sanctum", 1.4)
+	if _want("sanctum_host"):
+		Game.mode = "coop"
+		Net.online = true
+		Net.room_code = "QR7KM"
+		Net.lobby = [{"peer": 1, "local_index": 0, "hero": "kaela"}]
+		main.coop_kind = "host"
+		main.show_sanctum()
+		await _snap("sanctum_host", 1.4)
+		Net.online = false
+		Net.room_code = ""
+		main.coop_kind = ""
 	if _want("sanctum_locked"):
 		# preview a locked aspect: the Unlock button joins the row (widest state of the picker)
 		main._cycle_aspect()

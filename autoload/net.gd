@@ -1,5 +1,8 @@
 extends Node
-## Co-op networking over ENet (UDP).
+## Co-op networking. Online play goes through the Veilborne relay
+## (autoload/relay_peer.gd + tools/cloudflare/relay.js): the host gets a 5-letter
+## room code to share, friends anywhere join with it, and the session survives
+## switching apps. ENet (UDP, same network) is still used by the test harness.
 ##
 ## Model (built for low perceived latency):
 ## * Each player simulates their OWN heroine locally and instantly (client-side
@@ -17,6 +20,15 @@ signal connected_ok
 signal connection_failed
 signal disconnected
 signal ping_updated(ms: int)
+signal relay_event(kind: String) ## "host_away", "host_back", "reconnecting", "reconnected"
+
+const RELAY := "wss://veilborne-relay.hakipowered.workers.dev"
+const CODE_ALPHABET := "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+const INVITE_PAGE := "https://veilborne-relay.hakipowered.workers.dev/j/"
+var room_code := ""
+var relay: MultiplayerPeerExtension = null
+var _host_tries := 0
+var last_error := "" ## why the last online session failed (relay error code), for messages
 
 const PORT := 24680
 const MAX_PLAYERS := 4
@@ -32,11 +44,87 @@ func _ready() -> void:
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(func(): connected_ok.emit())
 	multiplayer.connection_failed.connect(func():
+		last_error = relay_error()
 		close()
 		connection_failed.emit())
 	multiplayer.server_disconnected.connect(func():
 		close()
 		disconnected.emit())
+
+func relay_server() -> String:
+	var e := OS.get_environment("VEIL_RELAY_URL")
+	return e if e != "" else RELAY
+
+static func new_code() -> String:
+	var s := ""
+	for i in 5:
+		s += CODE_ALPHABET[randi() % CODE_ALPHABET.length()]
+	return s
+
+## Finds a room code in what a friend pasted or copied ("VEILBORNE ABCDE", an invite link, or the code).
+static func code_from_text(t: String) -> String:
+	t = t.strip_edges().to_upper()
+	var m := RegEx.create_from_string("(?:/J/|VEILBORNE\\s+|^)([A-HJ-NP-Z2-9]{5})(?:$|[^A-Z0-9])").search(t)
+	return m.get_string(1) if m else ""
+
+func invite_text() -> String:
+	return "Join me in Veilborne! Open the game, tap Co-op, then Join, and enter code %s\n%s%s" % [room_code, INVITE_PAGE, room_code]
+
+## Online host: opens a room on the relay. connected_ok fires once the room is ready.
+func host_online(hero: String, code := "") -> Error:
+	close()
+	var p = load("res://autoload/relay_peer.gd").new()
+	room_code = code if code != "" else new_code()
+	p.start(relay_server(), room_code, true)
+	_use_relay(p)
+	lobby = [{"peer": 1, "local_index": 0, "hero": hero, "weapon": Game.weapon_for(hero), "aspect": Game.run_aspect}]
+	lobby_changed.emit()
+	return OK
+
+## Online friend: joins room `code`. connected_ok / connection_failed follow.
+func join_online(code: String, hero: String) -> Error:
+	close()
+	var p = load("res://autoload/relay_peer.gd").new()
+	room_code = code
+	p.start(relay_server(), code, false)
+	_use_relay(p)
+	_join_hero = hero
+	if not connected_ok.is_connected(_say_hello):
+		connected_ok.connect(_say_hello)
+	return OK
+
+func _use_relay(p) -> void:
+	relay = p
+	p.relay_event.connect(_on_relay_event)
+	multiplayer.multiplayer_peer = p
+	online = true
+
+func _on_relay_event(k: String) -> void:
+	relay_event.emit(k)
+	if arena and is_instance_valid(arena) and arena.get("hud"):
+		var t := ""
+		match k:
+			"host_away": t = "The host switched apps. The game carries on when they're back."
+			"host_back": t = "The host is back."
+			"reconnecting": t = "Reconnecting..."
+			"reconnected": t = "Reconnected."
+		if t != "":
+			arena.hud.subtitle(t)
+
+## Why the relay turned us away ("taken", "no_room", "full", "unreachable"), or "".
+func relay_error() -> String:
+	return relay.error_code if relay else ""
+
+func is_reconnecting() -> bool:
+	return relay != null and relay.is_reconnecting()
+
+func _notification(what: int) -> void:
+	if relay == null or not online:
+		return
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		relay.app_paused()
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		relay.app_resumed()
 
 func is_host() -> bool:
 	return not online or multiplayer.is_server()
@@ -80,6 +168,7 @@ func close() -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	online = false
+	relay = null
 	lobby.clear()
 
 func local_ip() -> String:
@@ -100,6 +189,19 @@ func _on_peer_disconnected(id: int) -> void:
 		arena.on_peer_left(id)
 
 func _process(delta: float) -> void:
+	# An online host whose room could not open: try a fresh code, or report it.
+	if online and relay != null and relay.hosting and relay.get_connection_status() == MultiplayerPeer.CONNECTION_DISCONNECTED:
+		var why: String = relay.error_code
+		var hero := String(lobby[0]["hero"]) if not lobby.is_empty() else "kaela"
+		if why == "taken" and _host_tries < 5:
+			_host_tries += 1
+			host_online(hero)
+			return
+		_host_tries = 0
+		last_error = why if why != "" else "unreachable"
+		close()
+		connection_failed.emit()
+		return
 	if online and not multiplayer.is_server() and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
 		_ping_timer -= delta
 		if _ping_timer <= 0.0:

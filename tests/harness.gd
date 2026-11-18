@@ -13,6 +13,9 @@ class FakePad:
 	var atk_hold := 0 ## frames left holding ATTACK (hold moves)
 
 var role := "solo"
+var relay_code := ""   ## online test through the relay (VEIL_RELAY_URL=ws://127.0.0.1:8787)
+var away_at := -1      ## --away=F:N: at frame F pretend the app went to the background for N frames
+var away_len := 0
 var frames := 6000
 var arena: Node
 var pads := {}
@@ -37,6 +40,8 @@ func _ready() -> void:
 	name = "Main"
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--role="): role = a.substr(7)
+		if a.begins_with("--relay="): relay_code = a.substr(8)
+		if a.begins_with("--away="): away_at = int(a.substr(7).split(":")[0]); away_len = int(a.substr(7).split(":")[1])
 		if a.begins_with("--frames="): frames = int(a.substr(9))
 		if a.begins_with("--shots="): shot_dir = a.substr(8)
 		if a.begins_with("--weapon="): weapon = a.substr(9)
@@ -60,13 +65,19 @@ func _ready() -> void:
 		Game.start_run(777)
 		start_arena()
 	elif role == "host":
-		Net.host_game("kaela")
+		if relay_code != "":
+			Net.host_online("kaela", relay_code)
+		else:
+			Net.host_game("kaela")
 		Net.lobby_changed.connect(func():
 			if Net.lobby.size() >= 2 and arena == null:
 				print("HOST: partner joined, starting")
 				Net.begin_run.rpc(4242, Net.lobby))
 	elif role == "client":
-		Net.join_game("127.0.0.1", "liora")
+		if relay_code != "":
+			Net.join_online(relay_code, "liora")
+		else:
+			Net.join_game("127.0.0.1", "liora")
 		Net.connected_ok.connect(func(): print("CLIENT: connected"))
 
 func start_arena() -> void:
@@ -89,6 +100,13 @@ func play_dialogue(_lines: Array, done: Callable) -> void:
 	done.call()
 
 func _physics_process(delta: float) -> void:
+	if away_at >= 0 and Net.relay:
+		if frame == away_at:
+			print("%s: going away at frame %d" % [role.to_upper(), frame])
+			Net.relay.app_paused()
+		elif frame == away_at + away_len:
+			print("%s: back at frame %d" % [role.to_upper(), frame])
+			Net.relay.app_resumed()
 	if arena == null and Time.get_ticks_msec() < 30000:
 		return # still connecting: the frame budget starts with the run
 	frame += 1
