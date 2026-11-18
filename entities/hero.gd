@@ -59,6 +59,8 @@ var souls := 0.0 ## Gravechain Scythe: 0..100, reaped by sweeps, spent by Soul H
 var full_t := -1.0 ## seconds since the draw / hold reached full (-1 = not full)
 var _since_dash := 9.0 ## seconds since the last dash ended (Fang Lunge window)
 var _block_fx := 0.0
+var _shield_pending := false ## Aegis: ATTACK pressed, waiting to see if it is a tap (bash) or a hold (guard)
+var _guard_spr: Sprite2D      ## the raised Aegis held out in front of her while guarding
 var blocks := 0 ## hits stopped by the raised Aegis (stats / tests)
 var move_count := {} ## signature moves done (stats / tests)
 var _send_timer := 0.0
@@ -404,6 +406,23 @@ func _simulate(delta: float) -> void:
 		_buffer_t["attack"] = 0.0
 		facing = _aim(mv)
 		_signature("lunge", 0.0)
+	elif _shield_pending and (state in ["idle", "run"] or not _held["attack"]):
+		# Aegis: a tap bashes (on release); held past HOLD_DELAY the shield goes up at once
+		if not _held["attack"]:
+			_shield_pending = false
+			if attack_cd <= 0.0 and state in ["idle", "run", "attack"]:
+				facing = _aim(mv)
+				_swing()
+		elif hold_t >= Game.HOLD_DELAY:
+			_shield_pending = false
+			facing = _aim(mv)
+			charge = 0.0
+			full_t = -1.0
+			_set_state("hold")
+			arena.sfx("slam_impact", position)
+	elif weapon_id == "shield" and _pr["attack"] and state in ["idle", "run"]:
+		_buffer_t["attack"] = 0.0
+		_shield_pending = true
 	elif (_pr["attack"] or (weapon_id == "twin" and _held["attack"])) and attack_cd <= 0.0 and state in ["idle", "run", "attack"]:
 		# (Moonfang: holding ATTACK keeps the flurry going)
 		_buffer_t["attack"] = 0.0
@@ -900,6 +919,10 @@ func _process(_delta: float) -> void:
 	var lc = lance_cast()
 	if lc != null and int(lc["stage"]) >= 1:
 		in_hand = ""
+	var guarding := weapon_id == "shield" and state == "hold" and not downed
+	if guarding:
+		in_hand = ""
+	_update_guard(guarding)
 	if body.weapon != in_hand:
 		body.set_weapon(in_hand)
 	body.set_facing(facing)
@@ -908,6 +931,35 @@ func _process(_delta: float) -> void:
 	var blink := iframes > 0.0 and state != "dash" and state != "special" and not downed and int(anim_t * 20) % 2 == 0
 	var a := 0.5 if blink else (0.6 if state == "dash" else 1.0)
 	body.tint = Color(0.55, 0.55, 0.7, a) if downed else Color(1, 1, 1, a)
+
+## The raised Aegis: the painted shield held out in front of her body toward `facing`,
+## seen face-on toward the camera and edge-on to the sides, brightening as Dawnbreak charges.
+func _update_guard(on: bool) -> void:
+	if not on:
+		if _guard_spr:
+			_guard_spr.visible = false
+		return
+	if _guard_spr == null:
+		_guard_spr = Sprite2D.new()
+		_guard_spr.texture = load("res://art/weapons/shield.png")
+		_guard_spr.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		add_child(_guard_spr)
+	_guard_spr.visible = true
+	var u := sprite_height / 160.0
+	var f := facing.normalized() if facing.length() > 0.01 else Vector2.DOWN
+	_guard_spr.position = Vector2(0, -44.0 * u - hop) + Vector2(f.x * 40.0, f.y * 22.0) * u
+	var sc := 80.0 * u / float(_guard_spr.texture.get_height())
+	_guard_spr.scale = Vector2(sc * (0.6 + 0.4 * absf(f.y)), sc)
+	_guard_spr.flip_h = f.x < 0.0
+	# in front of her body unless she faces away from the camera
+	var want := 0 if f.y < -0.8 else body.get_index() + 1
+	if _guard_spr.get_index() != want:
+		move_child(_guard_spr, want)
+	var c := charge
+	var pulse := 0.5 + 0.5 * sin(anim_t * 22.0) if c >= 1.0 else 0.0
+	_guard_spr.self_modulate = Color(1.0 + 0.35 * c + 0.3 * pulse, 1.0 + 0.3 * c + 0.25 * pulse, 1.0 + 0.1 * c, 1.0)
+	if flash > 0.0:
+		_guard_spr.self_modulate = Color(2, 2, 2, 1)
 
 func _draw() -> void:
 	var trim: Color = def["trim"]
@@ -984,11 +1036,6 @@ func _draw_weapon_fx(_trim: Color) -> void:
 					if weapon_id == "spear":
 						var tip := center + facing * reach * (0.8 + 0.3 * (1.0 - k))
 						fx.draw_line(center, tip, Color(1, 0.9, 0.6, alpha), 6.0)
-					elif weapon_id == "scythe":
-						# the chain: a whipping line out to the blade
-						var bt := center + Vector2.RIGHT.rotated(ang - arc / 2 + arc * minf(1.0, k * 1.6)) * reach
-						fx.draw_line(center, bt, Color(0.75, 0.6, 1.0, 0.7 * alpha), 3.0)
-						fx.draw_circle(bt, 10.0, Color(1, 0.85, 1, alpha))
 		"draw":
 			# bow: light gathers at the arrow tip as the draw fills
 			var c := charge
@@ -1023,26 +1070,31 @@ func _draw_hold_fx(center: Vector2, ang: float, col: Color) -> void:
 	var pulse := 0.5 + 0.5 * sin(anim_t * 22.0)
 	match weapon_id:
 		"shield":
-			# the raised Aegis: a sun-disc ward in front of her that brightens as Dawnbreak charges
-			# a curved ward of dawn-light standing in front of her, brightening as Dawnbreak charges
-			var at := center + facing * 62.0
-			var r := 58.0 + 6.0 * c
-			fx.draw_set_transform(center + facing * 10.0, ang, Vector2(0.55, 1.0))
-			_ring_smear(r + 30.0, -1.25, 1.25, col, 0.45 + 0.55 * c)
+			# a halo of dawn-light round the raised shield, the guarded arc on the floor, and at full
+			# charge a blazing star on the shield face (the cue to let go for Dawnbreak)
+			var u := sprite_height / 160.0
+			var at := Vector2(0, -44.0 * u - hop) + Vector2(facing.x * 40.0, facing.y * 22.0) * u
+			var rx := 40.0 * u * (0.6 + 0.4 * absf(facing.y))
+			fx.draw_set_transform(at, 0.0, Vector2(rx / (40.0 * u), 1.0))
+			for i in range(4):
+				fx.draw_circle(Vector2.ZERO, (40.0 + 9.0 * i) * u, Color(col, (0.04 + 0.08 * c) * (1.0 - i * 0.22)))
+			fx.draw_arc(Vector2.ZERO, 44.0 * u + 3.0 * pulse * float(full), 0, TAU, 32, Color(1, 0.92, 0.65, 0.3 + 0.5 * c), 2.5 + 2.0 * c)
 			fx.draw_set_transform(Vector2.ZERO)
 			fx.draw_set_transform(Vector2(0, -hop), 0.0, Vector2(1.0, 0.5))
 			var a0 := ang - deg_to_rad(Game.SHIELD_GUARD_ARC)
 			var a1 := ang + deg_to_rad(Game.SHIELD_GUARD_ARC)
-			fx.draw_arc(Vector2.ZERO, 70.0, a0, a1, 24, Color(col, 0.25 + 0.3 * c), 10.0)
-			fx.draw_arc(Vector2.ZERO, 70.0, a0, a0 + (a1 - a0) * c, 24, Color(1, 0.95, 0.75, 0.8), 4.0)
+			fx.draw_arc(Vector2.ZERO, 70.0, a0, a1, 24, Color(col, 0.18 + 0.25 * c), 8.0)
+			fx.draw_set_transform(Vector2.ZERO)
+			# Dawnbreak charge fills round the shield's rim
+			fx.draw_set_transform(at, 0.0, Vector2(rx / (40.0 * u), 1.0))
+			fx.draw_arc(Vector2.ZERO, 48.0 * u, -PI / 2, -PI / 2 + TAU * c, 32, Color(1, 0.95, 0.75, 0.85), 4.0)
 			fx.draw_set_transform(Vector2.ZERO)
 			for i in range(5):
 				var k := fmod(anim_t * 1.6 + i * 0.2, 1.0)
-				var p := at + facing.orthogonal() * (sin(i * 2.3) * 40.0) + Vector2(0, 30.0 - 70.0 * k)
+				var p := at + facing.orthogonal() * (sin(i * 2.3) * 30.0 * u) + Vector2(0, 20.0 * u - 60.0 * u * k)
 				fx.draw_circle(p, (3.0 + 4.0 * c) * (1.0 - k), Color(1, 0.85, 0.45, 0.7 * (1.0 - k)))
 			if full:
-				_star(at, 50.0 + 14.0 * pulse, anim_t * 3.0, Color(1, 0.95, 0.7, 0.9))
-				fx.draw_arc(at, r + 10.0 + 8.0 * pulse, 0, TAU, 32, Color(1, 1, 0.9, 0.9), 4.0)
+				_star(at, 46.0 * u + 12.0 * pulse, anim_t * 3.0, Color(1, 0.95, 0.7, 0.9))
 		"spear":
 			# embers spiral in toward her as the whirl winds up
 			var rr := 150.0 * reach_mult() * 0.55
@@ -1063,7 +1115,10 @@ func _draw_hold_fx(center: Vector2, ang: float, col: Color) -> void:
 				var a := i * 2.4 + anim_t
 				var p := Vector2(cos(a), sin(a) * 0.5) * 120.0 * (1.0 - k) + Vector2(0, -20.0 - 40.0 * k)
 				fx.draw_circle(p, 6.0 * (1.0 - k) + 2.0, Color(0.8, 0.6, 1.0, 0.8 * (1.0 - k)))
-			fx.draw_arc(center, 40.0 + 30.0 * (1.0 - c), 0, TAU * c, 32, Color(col, 0.85), 5.0)
+			# the charge fills a ring on the floor round her feet
+			fx.draw_set_transform(Vector2(0, -hop), 0.0, Vector2(1.0, 0.42))
+			fx.draw_arc(Vector2.ZERO, 58.0, -PI / 2, -PI / 2 + TAU * c, 32, Color(col, 0.85), 6.0)
+			fx.draw_set_transform(Vector2.ZERO)
 			if full:
 				_star(center + facing * 30.0, 40.0 + 10.0 * pulse, -anim_t * 3.0, Color(0.9, 0.75, 1.0, 0.95))
 

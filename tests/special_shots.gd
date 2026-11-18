@@ -34,7 +34,7 @@ const SCRIPT := {
 		[90, "aim+"], [98, "shot:aim"], [99, "aim-"], [130, "shot:starfall"], [150, "shot:starfall_b"], [200, "end"]],
 	"shield": [[5, "cd"], [6, "atk+"], [40, "shot:guard"], [60, "proj"], [66, "shot:block"], [86, "shot:guard_full"], [90, "atk-"], [94, "shot:dawnbreak"], [100, "shot:dawnbreak_b"],
 		[140, "aim+"], [148, "shot:aim"], [149, "aim-"], [170, "shot:throw"], [230, "end"]],
-	"scythe": [[5, "atk+"], [6, "atk-"], [12, "atk+"], [13, "atk-"], [30, "souls"], [40, "cd"], [41, "atk+"], [78, "shot:harvest_charge"], [98, "atk-"], [103, "shot:harvest"], [109, "shot:harvest_b"],
+	"scythe": [[5, "atk+"], [6, "atk-"], [9, "shot:swing"], [12, "atk+"], [13, "atk-"], [17, "shot:swing2"], [30, "souls"], [40, "cd"], [41, "atk+"], [78, "shot:harvest_charge"], [98, "atk-"], [103, "shot:harvest"], [109, "shot:harvest_b"],
 		[130, "aim+"], [138, "shot:aim"], [139, "aim-"], [156, "shot:hook_out"], [166, "shot:hook_back"], [180, "shot:hook_pulled"], [220, "end"]],
 }
 
