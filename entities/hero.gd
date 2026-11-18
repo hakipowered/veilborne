@@ -59,7 +59,7 @@ var souls := 0.0 ## Gravechain Scythe: 0..100, reaped by sweeps, spent by Soul H
 var full_t := -1.0 ## seconds since the draw / hold reached full (-1 = not full)
 var _since_dash := 9.0 ## seconds since the last dash ended (Fang Lunge window)
 var _block_fx := 0.0
-var _shield_pending := false ## Aegis: ATTACK pressed, waiting to see if it is a tap (bash) or a hold (guard)
+var _shield_pending := false ## spear/shield/scythe: ATTACK pressed, waiting to see a tap (swing) or a hold (hold move)
 var _guard_spr: Sprite2D      ## the raised Aegis held out in front of her while guarding
 var blocks := 0 ## hits stopped by the raised Aegis (stats / tests)
 var move_count := {} ## signature moves done (stats / tests)
@@ -407,7 +407,8 @@ func _simulate(delta: float) -> void:
 		facing = _aim(mv)
 		_signature("lunge", 0.0)
 	elif _shield_pending and (state in ["idle", "run"] or not _held["attack"]):
-		# Aegis: a tap bashes (on release); held past HOLD_DELAY the shield goes up at once
+		# Hold weapons (Emberlance, Aegis, Gravechain): a tap swings (on release); held past
+		# HOLD_DELAY the hold move starts charging at once, with no swing first
 		if not _held["attack"]:
 			_shield_pending = false
 			if attack_cd <= 0.0 and state in ["idle", "run", "attack"]:
@@ -419,8 +420,9 @@ func _simulate(delta: float) -> void:
 			charge = 0.0
 			full_t = -1.0
 			_set_state("hold")
-			arena.sfx("slam_impact", position)
-	elif weapon_id == "shield" and _pr["attack"] and state in ["idle", "run"]:
+			if weapon_id == "shield":
+				arena.sfx("slam_impact", position)
+	elif weapon_id in ["spear", "shield", "scythe"] and _pr["attack"] and state in ["idle", "run"]:
 		_buffer_t["attack"] = 0.0
 		_shield_pending = true
 	elif (_pr["attack"] or (weapon_id == "twin" and _held["attack"])) and attack_cd <= 0.0 and state in ["idle", "run", "attack"]:
@@ -1103,10 +1105,10 @@ func _draw_hold_fx(center: Vector2, ang: float, col: Color) -> void:
 				var a := anim_t * (6.0 + 6.0 * c) + i * TAU / 3.0
 				fx.draw_arc(Vector2.ZERO, rr * (1.3 - 0.4 * c), a, a + 1.4 + 1.2 * c, 16, Color(col, 0.35 + 0.5 * c), 4.0 + 5.0 * c)
 			fx.draw_set_transform(Vector2.ZERO)
-			var tip := center + facing * 58.0
-			fx.draw_circle(tip, 8.0 + 14.0 * c, Color(col, 0.5 + 0.4 * c))
+			# (no orb out in front: the wound-back spear is behind her) - at full charge she blazes
 			if full:
-				_star(tip, 34.0 + 10.0 * pulse, anim_t * 4.0, Color(1, 0.8, 0.4, 0.95))
+				fx.draw_circle(center, 30.0 + 6.0 * pulse, Color(col, 0.35))
+				_star(center, 44.0 + 10.0 * pulse, anim_t * 4.0, Color(1, 0.8, 0.4, 0.9))
 		"scythe":
 			# souls stream out of the floor into the blade
 			var n := 3 + int(souls / 15.0)
