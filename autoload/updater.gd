@@ -2,8 +2,8 @@ extends CanvasLayer
 ## Checks the repo's downloads branch for a newer build on launch and offers a one-tap update.
 ## The URLs never change, so one link always installs the newest version.
 
-const VERSION_CODE := 15
-const VERSION_NAME := "0.6.5"
+const VERSION_CODE := 16
+const VERSION_NAME := "0.6.6"
 const REPO := "hakipowered/veilborne"
 ## Cloudflare Worker that serves the newest build (no size limit; see tools/cloudflare/worker.js).
 const DL := "https://veilborne-download.hakipowered.workers.dev"
@@ -162,9 +162,12 @@ func _show(vname: String, notes: String, plan: Dictionary) -> void:
 	_status.visible = false
 	v.add_child(_status)
 	if plan["kind"] == "pack":
-		hint.text = "You're on v%s. This update is only %s: tap Update now, then reopen the game. Your saves are kept." % [VERSION_NAME, _mb(plan["size"])]
+		if can_restart():
+			hint.text = "You're on v%s. This update is only %s: tap Update now and the game restarts by itself when it's done. Your saves are kept." % [VERSION_NAME, _mb(plan["size"])]
+		else:
+			hint.text = "You're on v%s. This update is only %s: tap Update now, then reopen the game. Your saves are kept." % [VERSION_NAME, _mb(plan["size"])]
 	else:
-		hint.text = "You're on v%s. Tap Update now: the game downloads the update (%s) and Android asks you to install it. Your saves are kept." % [VERSION_NAME, _mb(plan["size"])]
+		hint.text = "You're on v%s. Tap Update now: the game downloads the update (%s) and Android asks you to install it. When it's installed, tap Open. Your saves are kept." % [VERSION_NAME, _mb(plan["size"])]
 
 ## Downloads the update in several pieces at once (much faster on phones),
 ## joins them, checks the result, then installs it.
@@ -288,7 +291,21 @@ func _finish() -> void:
 	_status.text = "Download complete. Tap Install on the next screen."
 	_install()
 
+## True when this APK has the VeilRestart Android plugin (APK 16 and later,
+## see tools/android), which can restart the game from inside.
+static func can_restart() -> bool:
+	return Engine.has_singleton(RESTARTER)
+
+const RESTARTER := "VeilRestart"
+
 func _ready_to_restart() -> void:
+	if can_restart():
+		_status.text = "Update installed. Restarting into v%s..." % str(_plan_now["name"])
+		_row.visible = false
+		await get_tree().create_timer(1.2).timeout
+		Engine.get_singleton(RESTARTER).restart()
+		# If Android didn't restart us within a few seconds, fall back to the buttons.
+		await get_tree().create_timer(5.0).timeout
 	_status.text = "Update ready. Close the game and open it again to play v%s." % str(_plan_now["name"])
 	_row.visible = true
 	for c in _row.get_children():

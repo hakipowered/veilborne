@@ -14,7 +14,7 @@
 # live by itself, usually within a few minutes (watch /status).
 #
 # Needs: Godot 4.3 + Android export templates, java, $KEYSTORE (same key every time, or
-#        Android refuses the update), $SIGNER (uber-apk-signer jar), git push access.
+#        Android refuses the update), $SIGNER (uber-apk-signer jar), python3, git push access.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MODE=pack
@@ -41,7 +41,10 @@ if [ "$MODE" = base ]; then
   echo "Releasing full APK v$NAME (code $CODE)"
   sed -i "s/^version\/code=.*/version\/code=$CODE/; s/^version\/name=.*/version\/name=\"$NAME\"/" export_presets.cfg
   "$GODOT" --headless --path . --export-release "Android" build/unsigned.apk 2>&1 | grep -E "export: end|ERROR" || true
-  java -jar "$SIGNER" -a build/unsigned.apk --ks "$KEYSTORE" --ksAlias veilborne --ksPass android --ksKeyPass android -o build/signed >/dev/null
+  # Adds the VeilRestart Android plugin (tools/android) so pack updates can restart the game.
+  python3 tools/android/patch_apk.py build/unsigned.apk build/patched.apk
+  rm build/unsigned.apk
+  java -jar "$SIGNER" -a build/patched.apk --ks "$KEYSTORE" --ksAlias veilborne --ksPass android --ksKeyPass android -o build/signed >/dev/null
   mv build/signed/*.apk build/Veilborne.apk
   FILE=build/Veilborne.apk; ID="apk-$CODE"
 else

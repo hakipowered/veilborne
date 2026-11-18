@@ -11,7 +11,7 @@ extends Node
 ## is switched off and the game runs from the APK alone.
 
 ## Version code of the APK this file shipped in. tools/release.sh --base sets it.
-const BASE_CODE := 11
+const BASE_CODE := 16
 const DIR := "user://packs/"
 const STATE := DIR + "current.json"
 const GUARD := DIR + "starting"
