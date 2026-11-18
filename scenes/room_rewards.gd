@@ -270,8 +270,10 @@ func _buy(o: Node2D, h: Node) -> bool:
 			h.heal(amt)
 			arena.float_text(h.position + Vector2(0, -130), "+%d" % int(amt), Color(0.45, 1, 0.6))
 		"vigor":
-			if int(h.boons.get("tidal_heart", {}).get("level", 0)) < Game.CARD_MAX_LEVEL:
-				h.add_boon("tidal_heart", 0)
+			# a flat +20 max health every time (not a Tidal Heart card level, which would give +15 or nothing)
+			h.boons["_vigor"] = int(h.boons.get("_vigor", 0)) + 1
+			h.recompute_stats()
+			h.sync_boons()
 			h.heal(h.max_hp)
 			arena.hud.refresh()
 			arena.float_text(h.position + Vector2(0, -130), "+max health", Color(0.45, 1, 0.8))

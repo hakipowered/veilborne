@@ -31,7 +31,7 @@ const PATRONS := {
 ## Picking a card you own levels it up (Level I -> II -> III, see card_value); maxed cards are no longer offered.
 const BOONS := [
 	{"id": "ember_strike", "patron": "oriel", "name": "Ember Strike", "desc": "Attacks deal +%d%% damage.", "stat": "attack_mult", "values": [25, 40, 60], "step": 15},
-	{"id": "kindle", "patron": "oriel", "name": "Kindle", "desc": "Attacks burn foes for %d damage/sec.", "stat": "burn", "values": [6, 10, 15], "step": 4},
+	{"id": "kindle", "patron": "oriel", "name": "Kindle", "desc": "Your hits set foes burning for %d damage/sec.", "stat": "burn", "values": [6, 10, 15], "step": 4},
 	{"id": "flare_cast", "patron": "oriel", "name": "Solar Flare", "desc": "Special deals +%d%% damage.", "stat": "special_mult", "values": [40, 65, 100], "step": 25},
 	{"id": "thunder_step", "patron": "vessa", "name": "Thunder Step", "desc": "Dash strikes nearby foes for %d.", "stat": "dash_shock", "values": [15, 25, 40], "step": 10},
 	{"id": "chain_arc", "patron": "vessa", "name": "Chain Arc", "desc": "Hits arc lightning to %d extra foes.", "stat": "chain", "values": [1, 2, 3], "step": 1},
@@ -46,49 +46,61 @@ const BOONS := [
 ## ---------------------------------------------------------------- weapons
 ## Weapons are separate from the heroine: any heroine can carry any weapon.
 ## Damage, timing and the special's shape come from here; the heroine sets health and speed.
+## Every weapon has its own signature: what a tap of ATTACK does, what HOLDING ATTACK does, and a special
+## that is not just "throw a thing at the target":
+##   Emberlance  - hold: Cinder Whirl (charged spin) · special: throw the lance; it lodges; SPECIAL/ATTACK recalls it
+##   Moonfang    - hold: endless flurry · ATTACK during/right after a dash: Fang Lunge · special: Moonstep blink-slash
+##   Starwhisper - hold: draw; let go in the flash at full draw for a Perfect Shot · special: Starfall rain on an area
+##   Aegis       - hold: raise the shield (blocks hits from the front) and charge Dawnbreak; let go when full · special: throw
+##   Gravechain  - sweeps reap Souls · hold: Soul Harvest spends them · special: Gravechain Hook drags foes to you
+## hold: what holding ATTACK does (shown on the ATTACK button). hint: the controls, said once when a run starts.
 ## special_time: whole special pose; special_hit: when the effect is released / lands (anim hit frame is fitted to it).
 ## Each weapon has 3 aspects (forms). Aspect 0 is free; others are bought with Veil Shards (Game.unlock_aspect).
 ## Aspect "mods" add into hero stats (same keys as boons / forge, see hero.gd recompute_stats).
 const WEAPONS := {
 	"spear": {
 		"name": "Emberlance", "kind": "Spear", "icon": "weapon_spear", "color": Color(1.0, 0.55, 0.2),
-		"desc": "Long thrusts, a three-hit combo, and a leaping slam at the aimed point.",
-		"attack": 14.0, "special": 32.0, "cd": 0.32, "reach": 125.0, "arc": 42.0, "lunge": 260.0,
-		"special_cd": 2.6, "special_time": 0.62, "special_hit": 0.42, "special_name": "Ember Leap",
+		"desc": "Tap: a three-thrust combo. Hold: charge Cinder Whirl, a blazing spin. Special: hurl the lance; it lodges and flares, and SPECIAL or ATTACK calls it back through every foe in the way.",
+		"hold": "HOLD: WHIRL", "hint": "Hold ATTACK to charge Cinder Whirl. SPECIAL throws the lance; press again to call it back.",
+		"attack": 14.0, "special": 30.0, "cd": 0.32, "reach": 125.0, "arc": 42.0, "lunge": 260.0,
+		"special_cd": 2.2, "special_time": 0.42, "special_hit": 0.22, "special_name": "Ember Lance",
 		"swing": "swing_spear", "cast": "special_ember",
 		"aspects": [
 			{"name": "Aspect of Cinders", "desc": "The lance as it was forged. Balanced reach and fire.", "cost": 0, "mods": {}},
-			{"name": "Aspect of the Comet", "desc": "Ember Leap flies 35% farther and its blast is 30% wider.", "cost": 40, "mods": {"w_range": 35, "w_area": 30}},
-			{"name": "Aspect of the Pyre", "desc": "Every strike sets foes ablaze, and the leap leaves burning ground.", "cost": 80, "mods": {"burn": 6, "w_pool": 12}},
+			{"name": "Aspect of the Comet", "desc": "The thrown lance flies 35% farther and its landing flare is 30% wider.", "cost": 40, "mods": {"w_range": 35, "w_area": 30}},
+			{"name": "Aspect of the Pyre", "desc": "Every strike sets foes ablaze, and the lodged lance burns the ground around it.", "cost": 80, "mods": {"burn": 6, "w_pool": 12}},
 		],
 	},
 	"twin": {
 		"name": "Moonfang Blades", "kind": "Twin Blades", "icon": "weapon_twin", "color": Color(0.7, 0.85, 1.0),
-		"desc": "Fast wide slashes. The special hurls a crescent that whirls at the aimed point.",
+		"desc": "Tap or hold: an endless flurry of wide slashes. ATTACK during a dash: Fang Lunge. Special: Moonstep, a blink through the aimed line that cuts everything, and moonlit afterimages cut it again.",
+		"hold": "HOLD: FLURRY", "hint": "Hold ATTACK for a flurry; ATTACK while dashing lunges. SPECIAL blinks through foes.",
 		"attack": 9.0, "special": 26.0, "cd": 0.2, "reach": 100.0, "arc": 75.0, "lunge": 200.0,
-		"special_cd": 2.6, "special_time": 0.5, "special_hit": 0.33, "special_name": "Crescent Throw",
+		"special_cd": 2.4, "special_time": 0.36, "special_hit": 0.12, "special_name": "Moonstep",
 		"swing": "swing_blades", "cast": "special_moon",
 		"aspects": [
 			{"name": "Aspect of Moonfall", "desc": "Swift and true. No twist.", "cost": 0, "mods": {}},
-			{"name": "Aspect of Eclipse", "desc": "Throw two crescents at once, and +10% critical chance.", "cost": 40, "mods": {"w_multi": 1, "crit": 10}},
+			{"name": "Aspect of Eclipse", "desc": "Moonstep's afterimages cut one more time, and +10% critical chance.", "cost": 40, "mods": {"w_multi": 1, "crit": 10}},
 			{"name": "Aspect of Tidewane", "desc": "+1 dash charge, and every dash slashes foes it passes.", "cost": 80, "mods": {"dash_charges": 1, "w_dash_strike": 20}},
 		],
 	},
 	"bow": {
 		"name": "Starwhisper Bow", "kind": "Bow", "icon": "weapon_bow", "color": Color(1.0, 0.9, 0.55),
-		"desc": "Tap to loose an arrow, hold to draw a piercing charged shot. The special rains a volley on the aimed point.",
+		"desc": "Tap: a quick arrow. Hold: draw a piercing shot; let go in the flash at full draw for a Perfect Shot (+50% damage, pierces all). Special: Starfall, waves of arrows rain on the aimed area.",
+		"hold": "HOLD: DRAW", "hint": "Hold ATTACK to draw; let go in the flash at full draw for a Perfect Shot.",
 		"attack": 20.0, "special": 22.0, "cd": 0.25, "reach": 0.0, "arc": 0.0, "lunge": 0.0,
 		"special_cd": 2.4, "special_time": 0.5, "special_hit": 0.33, "special_name": "Starfall Volley",
 		"swing": "swing_blades", "cast": "special_moon",
 		"aspects": [
 			{"name": "Aspect of the Huntress", "desc": "Steady draw, steady aim. No twist.", "cost": 0, "mods": {}},
 			{"name": "Aspect of Starfall", "desc": "The volley falls on a 40% wider area and lands one more wave.", "cost": 40, "mods": {"w_area": 40, "w_pulses": 1}},
-			{"name": "Aspect of the Gale", "desc": "Draw 35% faster, and fully drawn shots pierce every foe.", "cost": 80, "mods": {"w_charge": 35, "w_pierce": 20}},
+			{"name": "Aspect of the Gale", "desc": "Draw 35% faster, and fully drawn shots pierce every foe.", "cost": 80, "mods": {"w_charge": 35, "w_fullpierce": 99}},
 		],
 	},
 	"shield": {
 		"name": "Aegis of Dawn", "kind": "Shield", "icon": "weapon_shield", "color": Color(1.0, 0.8, 0.4),
-		"desc": "Heavy bashes; the third strike is a charging rush. The special throws the shield at the aimed point.",
+		"desc": "Tap: heavy bashes; the third is a rush. Hold: raise the shield to block every hit from the front while Dawnbreak charges; let go when it blazes for a charging slam. Special: throw the shield.",
+		"hold": "HOLD: GUARD", "hint": "Hold ATTACK to raise the shield and block; let go when it blazes for Dawnbreak.",
 		"attack": 15.0, "special": 28.0, "cd": 0.33, "reach": 105.0, "arc": 60.0, "lunge": 180.0,
 		"special_cd": 2.6, "special_time": 0.48, "special_hit": 0.3, "special_name": "Aegis Throw",
 		"swing": "swing_spear", "cast": "special_ember",
@@ -100,27 +112,41 @@ const WEAPONS := {
 	},
 	"scythe": {
 		"name": "Gravechain Scythe", "kind": "Chain Scythe", "icon": "weapon_scythe", "color": Color(0.78, 0.5, 1.0),
-		"desc": "Sweeping arcs on a long chain; the finisher yanks foes in. The special hurls a vortex that drags enemies to the aimed point.",
-		"attack": 12.0, "special": 12.0, "cd": 0.4, "reach": 150.0, "arc": 150.0, "lunge": 120.0,
-		"special_cd": 3.0, "special_time": 0.52, "special_hit": 0.34, "special_name": "Reaping Vortex",
+		"desc": "Tap: wide sweeps that reap Souls from every foe they cut. Hold: Soul Harvest, a great reap that spends the Souls for damage. Special: the Gravechain Hook lashes out and drags every foe it catches to you.",
+		"hold": "HOLD: HARVEST", "hint": "Sweeps reap Souls; hold ATTACK to spend them on Soul Harvest. SPECIAL hooks foes to you.",
+		"attack": 12.0, "special": 18.0, "cd": 0.4, "reach": 150.0, "arc": 150.0, "lunge": 120.0,
+		"special_cd": 2.8, "special_time": 0.5, "special_hit": 0.24, "special_name": "Gravechain Hook",
 		"swing": "swing_blades", "cast": "special_moon",
 		"aspects": [
 			{"name": "Aspect of the Gravewarden", "desc": "Wide reaping arcs. No twist.", "cost": 0, "mods": {}},
-			{"name": "Aspect of the Tollkeeper", "desc": "Every hit drags foes toward you, and kills heal 2.", "cost": 40, "mods": {"w_yank": 1, "lifesteal": 2}},
-			{"name": "Aspect of the Hollow Moon", "desc": "The vortex ends in a detonation for double damage on a 30% wider area.", "cost": 80, "mods": {"w_detonate": 100, "w_area": 30}},
+			{"name": "Aspect of the Tollkeeper", "desc": "Every sweep drags foes toward you, and kills heal 2.", "cost": 40, "mods": {"w_drag": 1, "lifesteal": 2}},
+			{"name": "Aspect of the Hollow Moon", "desc": "Soul Harvest deals double damage on a 30% wider area.", "cost": 80, "mods": {"w_detonate": 100, "w_harvest_area": 30}},
 		],
 	},
 }
 const WEAPON_ORDER := ["spear", "twin", "bow", "shield", "scythe"]
 
+## Signature numbers (shared by hero.gd, arena.gd and the effect test).
+const SPEAR_WHIRL_TIME := 0.55   ## s to a full Cinder Whirl charge
+const SPEAR_WHIRL_R := 150.0
+const SPEAR_LODGE_TIME := 6.0    ## the lodged lance comes back by itself after this
+const SHIELD_GUARD_TIME := 1.0   ## s of guarding to charge Dawnbreak
+const SHIELD_GUARD_ARC := 80.0   ## degrees either side of facing that the raised shield covers
+const BOW_PERFECT_WINDOW := 0.18 ## s after a full draw in which letting go is a Perfect Shot
+const SCYTHE_HARVEST_TIME := 0.5
+const SCYTHE_HARVEST_R := 190.0
+const SCYTHE_SOULS_PER_HIT := 10.0
+const TWIN_LUNGE_WINDOW := 0.18  ## s after a dash in which ATTACK is a Fang Lunge
+const HOLD_DELAY := 0.2          ## s ATTACK must stay held (after the tap's swing) to start a hold move
+
 ## In-run weapon upgrades from the Forge reward. Stored per hero in boons["_forge"] = {id: {level, rarity}}.
 const FORGE := [
-	{"id": "spear_echo", "weapon": "spear", "name": "Echo Leap", "desc": "Ember Leap slams a second time for %d%% damage.", "stat": "w_twice", "values": [50, 75, 100], "step": 25},
+	{"id": "spear_echo", "weapon": "spear", "name": "Echo Flare", "desc": "The lodged lance flares a second time for %d%% damage.", "stat": "w_twice", "values": [50, 75, 100], "step": 25},
 	{"id": "spear_comet", "weapon": "spear", "name": "Comet Thrust", "desc": "Each dash ends in a spear thrust for %d damage.", "stat": "w_dash_strike", "values": [18, 28, 40], "step": 10},
-	{"id": "spear_haft", "weapon": "spear", "name": "Long Haft", "desc": "Thrusts reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40], "step": 10},
-	{"id": "spear_cinder", "weapon": "spear", "name": "Trail of Cinders", "desc": "Ember Leap leaves burning ground (%d damage/sec).", "stat": "w_pool", "values": [10, 16, 24], "step": 6},
-	{"id": "twin_wane", "weapon": "twin", "name": "Lingering Moon", "desc": "The crescent whirls %d%% longer.", "stat": "w_whirl", "values": [40, 70, 100], "step": 25},
-	{"id": "twin_home", "weapon": "twin", "name": "Homeward Crescent", "desc": "The crescent flies back to you, cutting for %d%% damage.", "stat": "w_return", "values": [60, 90, 130], "step": 30},
+	{"id": "spear_haft", "weapon": "spear", "name": "Long Haft", "desc": "Thrusts and Cinder Whirl reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40], "step": 10},
+	{"id": "spear_cinder", "weapon": "spear", "name": "Trail of Cinders", "desc": "The lodged lance burns the ground around it (%d damage/sec).", "stat": "w_pool", "values": [10, 16, 24], "step": 6},
+	{"id": "twin_wane", "weapon": "twin", "name": "Lingering Moon", "desc": "Moonstep's afterimages cut for +%d%% damage.", "stat": "w_whirl", "values": [40, 70, 100], "step": 25},
+	{"id": "twin_home", "weapon": "twin", "name": "Homeward Crescent", "desc": "After Moonstep a crescent flies back along your path, cutting for %d%% damage.", "stat": "w_return", "values": [60, 90, 130], "step": 30},
 	{"id": "twin_step", "weapon": "twin", "name": "Moonlit Step", "desc": "Dashing slashes foes you pass for %d.", "stat": "w_dash_strike", "values": [14, 22, 32], "step": 8},
 	{"id": "twin_quick", "weapon": "twin", "name": "Quickened Edges", "desc": "Attack %d%% faster.", "stat": "w_speed", "values": [12, 20, 30], "step": 6},
 	{"id": "bow_pierce", "weapon": "bow", "name": "Piercing Fletch", "desc": "Arrows pierce %d more foes.", "stat": "w_pierce", "values": [1, 2, 3], "step": 1},
@@ -129,12 +155,12 @@ const FORGE := [
 	{"id": "bow_rain", "weapon": "bow", "name": "Endless Rain", "desc": "The volley lands %d more waves.", "stat": "w_pulses", "values": [1, 2, 3], "step": 1},
 	{"id": "shield_rebound", "weapon": "shield", "name": "Rebound Rim", "desc": "The thrown shield ricochets to %d more foes.", "stat": "w_ricochet", "values": [1, 2, 3], "step": 1},
 	{"id": "shield_anchor", "weapon": "shield", "name": "Anchored Aegis", "desc": "The thrown shield lodges at the aimed point and spins there +%.1f s, then ricochets home.", "stat": "w_anchor", "values": [2.5, 3.5, 4.5], "step": 1.0},
-	{"id": "shield_rush", "weapon": "shield", "name": "Vanguard Rush", "desc": "The rushing third strike deals +%d%% damage and goes farther.", "stat": "w_rush", "values": [40, 70, 100], "step": 25},
-	{"id": "shield_guard", "weapon": "shield", "name": "Sunlit Guard", "desc": "Take %d%% less damage.", "stat": "armor", "values": [6, 10, 15], "step": 4},
+	{"id": "shield_rush", "weapon": "shield", "name": "Vanguard Rush", "desc": "Rushes (the third bash and Dawnbreak) deal +%d%% damage and go farther.", "stat": "w_rush", "values": [40, 70, 100], "step": 25},
+	{"id": "shield_guard", "weapon": "shield", "name": "Sunlit Guard", "desc": "The raised shield charges Dawnbreak %d%% faster.", "stat": "w_guard", "values": [25, 40, 60], "step": 15},
 	{"id": "scythe_chain", "weapon": "scythe", "name": "Longer Chain", "desc": "Sweeps reach %d%% farther.", "stat": "w_reach", "values": [15, 25, 40], "step": 10},
-	{"id": "scythe_hook", "weapon": "scythe", "name": "Hooked Edge", "desc": "Every sweep drags foes toward you (+%d pull).", "stat": "w_yank", "values": [1, 1, 2], "step": 1},
-	{"id": "scythe_maw", "weapon": "scythe", "name": "Hungry Maw", "desc": "The vortex lasts %d%% longer and pulls harder.", "stat": "w_whirl", "values": [40, 70, 100], "step": 25},
-	{"id": "scythe_soul", "weapon": "scythe", "name": "Soulreap", "desc": "Heal %d for each foe the vortex catches.", "stat": "w_soul", "values": [1, 2, 3], "step": 1},
+	{"id": "scythe_hook", "weapon": "scythe", "name": "Hooked Edge", "desc": "Every sweep drags foes toward you and cuts +%d%% deeper.", "stat": "w_yank", "values": [15, 25, 35], "step": 10},
+	{"id": "scythe_maw", "weapon": "scythe", "name": "Hungry Maw", "desc": "The Gravechain Hook flies %d%% farther.", "stat": "w_range", "values": [25, 40, 60], "step": 15},
+	{"id": "scythe_soul", "weapon": "scythe", "name": "Soulreap", "desc": "Heal %d for each foe the Gravechain Hook catches.", "stat": "w_soul", "values": [1, 2, 3], "step": 1},
 ]
 ## Rewards offered on the exits of a cleared chamber (granted when the NEXT chamber is cleared).
 const REWARDS := {
@@ -427,16 +453,11 @@ func forge_by_id(id: String) -> Dictionary:
 func forge_text(id: String, rarity: int, level := 1) -> String:
 	return card_text(forge_by_id(id), rarity, level)
 
-## False for a forge card that would do nothing with this weapon + aspect
-## (e.g. Piercing Fletch under Aspect of the Gale, whose drawn shots already pierce every foe and whose
-## quick shots are already at the pierce cap).
-func forge_useful(f: Dictionary, weapon: String, aspect: int) -> bool:
-	if f["weapon"] != weapon:
-		return false
-	var mods: Dictionary = aspect_def(weapon, aspect).get("mods", {})
-	if f["stat"] == "w_pierce" and float(mods.get("w_pierce", 0.0)) >= 3.0:
-		return false
-	return true
+## False for a forge card that would do nothing with this weapon + aspect. (Every forge card currently does
+## something under every aspect: e.g. Piercing Fletch still adds pierce to quick shots under the Gale, whose
+## own pierce-everything only applies to fully drawn shots.)
+func forge_useful(f: Dictionary, weapon: String, _aspect: int) -> bool:
+	return f["weapon"] == weapon
 
 ## owned: hero.boons["_forge"] (id -> {level, rarity}). aspect: the hero's aspect (filters useless cards).
 func roll_forge(rng: RandomNumberGenerator, weapon: String, owned: Dictionary, count := 3, aspect := 0) -> Array:

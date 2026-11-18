@@ -149,6 +149,13 @@ func _draw() -> void:
 			draw_texture_rect(g, Rect2(ctr - Vector2(gw, gs) * 0.5, Vector2(gw, gs)), false, Color(1, 1, 1, 1.0 if ready >= 1.0 else 0.4))
 		if ready < 1.0:
 			draw_arc(ctr, r * 0.66, -PI / 2, -PI / 2 + TAU * ready, 40, Color(col.r, col.g, col.b, 0.95), 5.0, true)
+		if key == "attack" and is_instance_valid(hero) and String(hero.state) in ["hold", "draw"]:
+			# the hold move's charge fills round the ATTACK medallion; it blazes white when it is time to let go
+			var ch: float = clampf(float(hero.charge), 0.0, 1.0)
+			var full: bool = ch >= 1.0
+			draw_arc(ctr, r * 1.12, -PI / 2, -PI / 2 + TAU * ch, 48, Color(1, 0.95, 0.8) if full else Color(col.r, col.g, col.b, 0.95), 8.0 if full else 6.0, true)
+			if full and _dot:
+				draw_texture_rect(_dot, Rect2(ctr - Vector2.ONE * r * 2.0, Vector2.ONE * r * 4.0), false, Color(1, 0.95, 0.8, 0.5))
 		if key == "special" and held:
 			# aim stick: a gilded knob dragged out of the medallion
 			var tip := ctr + special_aim * r * 1.5
@@ -160,13 +167,19 @@ func _draw() -> void:
 		var ly := ctr.y + r + 18.0
 		draw_string_outline(font, Vector2(ctr.x - 80, ly), info[2], HORIZONTAL_ALIGNMENT_CENTER, 160, 15, 5, Color(0.03, 0.01, 0.04, 0.85))
 		draw_string(font, Vector2(ctr.x - 80, ly), info[2], HORIZONTAL_ALIGNMENT_CENTER, 160, 15, Color(1, 0.92, 0.78, 0.85))
+		if key == "attack" and is_instance_valid(hero):
+			# what holding ATTACK does with this weapon (HOLD: GUARD, HOLD: DRAW...)
+			var hl := String(hero.wdef.get("hold", ""))
+			if hl != "":
+				draw_string_outline(font, Vector2(ctr.x - 90, ly + 18), hl, HORIZONTAL_ALIGNMENT_CENTER, 180, 12, 4, Color(0.03, 0.01, 0.04, 0.85))
+				draw_string(font, Vector2(ctr.x - 90, ly + 18), hl, HORIZONTAL_ALIGNMENT_CENTER, 180, 12, Color(1, 0.8, 0.5, 0.75))
 
 
 func _process(_delta: float) -> void:
 	if not is_instance_valid(hero):
 		return
 	# redraw only while cooldown visuals are changing
-	var sig := int(hero.special_cd * 30.0) * 8 + int(hero.dash_charges)
+	var sig := (int(hero.special_cd * 30.0) * 8 + int(hero.dash_charges)) * 64 + int(float(hero.charge) * 40.0) + (50 if String(hero.state) in ["hold", "draw"] else 0)
 	if sig != _last_sig:
 		_last_sig = sig
 		queue_redraw()

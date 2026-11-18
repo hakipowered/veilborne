@@ -15,6 +15,18 @@ func _ready() -> void:
 	_test_forge()
 	_test_offers()
 	_test_text()
+	# measured effects in a real arena (tests/effect_test.gd)
+	var fx: Node = preload("res://tests/effect_test.gd").new()
+	fx.name = "Effects"
+	add_child(fx)
+	fx.run()
+	checks += fx.checks
+	for f in fx.fails:
+		fails.append("EFFECT " + f)
+	print("EFFECT: card audit")
+	for id in fx.table:
+		var row: Array = fx.table[id]
+		print("  %-26s %s %s" % [id, row[0], row[1]])
 	for f in fails:
 		print("BOON FAIL: ", f)
 	print("BOON: %s (%d checks, %d failures)" % ["PASS" if fails.is_empty() else "FAIL", checks, fails.size()])
@@ -101,12 +113,11 @@ func _test_forge() -> void:
 	hb.add_forge("shield_anchor", 0)
 	_check(_near(hb.stats["w_anchor"], 4.0 + 2.5), "Bastion + anchor = 6.5 s")
 	hb.free()
-	# stacked armor is capped
+	# stacked armor (Bulwark + Briar Ward III Epic) adds up and stays under the cap
 	var ha := _hero("shield", 0)
 	for k in range(3):
-		ha.add_forge("shield_guard", 2)
 		ha.add_boon("briar_ward", 2)
-	_check(_near(ha.stats["armor"], ha.ARMOR_CAP), "armor capped at %s (got %s)" % [ha.ARMOR_CAP, ha.stats["armor"]])
+	_check(_near(ha.stats["armor"], minf(10.0 + 25.0 + 12.0, ha.ARMOR_CAP)), "armor stacks to %s" % ha.stats["armor"])
 	ha.free()
 
 
@@ -135,9 +146,11 @@ func _test_offers() -> void:
 					var f := Game.forge_by_id(c["id"])
 					seen[c["id"]] = true
 					_check(f["weapon"] == w, "forge %s offered for %s" % [c["id"], w])
-					if w == "bow" and a == 2:
-						_check(c["id"] != "bow_pierce", "Piercing Fletch offered under the Gale (no effect)")
+					if w == "bow" and a == 2 and c["id"] == "bow_pierce":
+						seen["gale_pierce"] = true
 			_check(seen.size() >= 3, "%s aspect %d has forge cards to offer" % [w, a])
+			if w == "bow" and a == 2:
+				_check(seen.has("gale_pierce"), "Piercing Fletch still offered under the Gale (it adds pierce to quick shots)")
 	var full := {}
 	for f in Game.FORGE:
 		if f["weapon"] == "shield":

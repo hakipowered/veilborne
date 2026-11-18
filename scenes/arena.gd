@@ -68,6 +68,7 @@ var _rings: Array = [] ## impact rings [pos, r, life, max_life, color]
 var _ecache: Array = [] ## enemies alive this frame (rebuilt once per physics frame)
 var _targets: Array = []
 var groundfx: Node2D ## additive layer on the floor: reticles, telegraphs, impact rings
+var ghostfx: Node2D ## Moonstep afterimages
 var airfx: Node2D ## additive layer above characters: blade glows, arrows
 ## Rewards / exits ("choose your next chamber")
 var room_reward := "boon" ## reward granted when THIS chamber is cleared
@@ -115,6 +116,15 @@ func _ready() -> void:
 	overlay.z_index = 5
 	overlay.draw.connect(_draw_overlay)
 	add_child(overlay)
+	# Moonstep's afterimages: her pose washed into cold moonlight (the sprite flash shader, tinted)
+	ghostfx = Node2D.new()
+	ghostfx.z_index = 4
+	var gm := ShaderMaterial.new()
+	gm.shader = Shader.new()
+	gm.shader.code = "shader_type canvas_item;\nvoid fragment(){ vec4 c = texture(TEXTURE, UV); vec3 moon = vec3(0.55, 0.75, 1.0) * (0.55 + 0.6 * dot(c.rgb, vec3(0.3, 0.5, 0.2))); COLOR = vec4(moon, c.a * COLOR.a); }"
+	ghostfx.material = gm
+	ghostfx.draw.connect(_draw_ghosts)
+	add_child(ghostfx)
 	airfx = Node2D.new()
 	airfx.z_index = 6
 	airfx.material = add_mat
@@ -160,6 +170,11 @@ func setup(players: Array) -> void:
 			h.touch = hud.touch
 		h.sync_boons()
 	_load_room(0)
+	# the weapon's controls, said once as the run begins
+	for h in hero_nodes.values():
+		if h.controlled and int(h.local_index) == 0 and String(h.wdef.get("hint", "")) != "":
+			hud.subtitle(String(h.wdef["hint"]), Color(1.0, 0.85, 0.6))
+			break
 
 # ---------------------------------------------------------------- audio
 
@@ -550,7 +565,7 @@ const MODE_VISUAL := 2  ## everyone else: effect visuals only (host "hit" events
 
 func _action_sound(hero: Node, action: String, pos: Vector2) -> void:
 	var w: Dictionary = hero.wdef
-	if action.begins_with("attack") or action == "shot":
+	if action.begins_with("attack") or action == "shot" or action == "recall":
 		sfx(String(w["swing"]), pos)
 	elif action == "special":
 		sfx(String(w["cast"]), pos)
@@ -580,7 +595,7 @@ func _apply_hit(hero: Node, e: Node, amount: float, salt: int, mode: int, from: 
 		if pull != Vector2.INF and e.has_method("pull"):
 			e.pull(pull, pull_strength)
 		if st["burn"] > 0 and e.has_method("apply_burn"):
-			e.apply_burn(float(st["burn"]))
+			e.apply_burn(float(st["burn"]) * float(st["dmg_meta"]))
 		_damage_number(hit_pos, amount, crit)
 		if Net.online:
 			Net.world_event.rpc("hit", [e.eid, amount, crit, hero.key])
@@ -594,6 +609,16 @@ func _resolve_action(hero: Node, action: String, pos: Vector2, dir: Vector2, seq
 	if action == "shot":
 		_spawn_arrows(hero, pos, dir, aim.x, seq, mode)
 		return
+	if action == "recall":
+		# Emberlance: the lodged lance tears free and flies home (every device runs the same timeline)
+		var lc = lance_of(hero)
+		if lc != null and int(lc["stage"]) == 2:
+			_lance_recall(lc)
+		return
+	var col: Color = hero.wdef["color"]
+	var sig: bool = action in ["whirl", "dawn", "harvest", "lunge"]
+	if sig:
+		_signature_visual(hero, action, pos, dir, col)
 	if mode == MODE_VISUAL:
 		return
 	var st: Dictionary = hero.stats
@@ -605,7 +630,30 @@ func _resolve_action(hero: Node, action: String, pos: Vector2, dir: Vector2, seq
 	var origin := pos + Vector2(0, -20)
 	var pull := Vector2.INF
 	var pull_s := 0.0
-	if action.begins_with("attack"):
+	var per_target: Array = [] ## dash: damage per target (Thunder Step and the dash slash are separate blows)
+	if sig:
+		dmg = hero.move_damage(action, aim.x)
+		match action:
+			"whirl":
+				var r: float = hero.whirl_radius()
+				for e in _ecache:
+					if e.hp > 0 and _in_ellipse(e.position, pos, r + e.radius):
+						targets.append(e)
+			"harvest":
+				var r: float = hero.harvest_radius()
+				for e in _ecache:
+					if e.hp > 0 and _in_ellipse(e.position, pos, r + e.radius):
+						targets.append(e)
+			"dawn":
+				var lane := 330.0 * (1.0 + float(st["w_rush"]) / 250.0)
+				for e in _ecache:
+					if e.hp > 0 and _seg_dist(e.position, pos, pos + dir * lane) <= 85.0 + e.radius:
+						targets.append(e)
+			"lunge":
+				for e in _ecache:
+					if e.hp > 0 and _seg_dist(e.position, pos, pos + dir * 190.0) <= 60.0 + e.radius:
+						targets.append(e)
+	elif action.begins_with("attack"):
 		var finisher := action == "attack0"
 		dmg = hero.attack_damage("attack", finisher)
 		if w == "shield" and finisher:
@@ -624,15 +672,15 @@ func _resolve_action(hero: Node, action: String, pos: Vector2, dir: Vector2, seq
 				var d := to.length()
 				if d <= reach + e.radius and (d < 40.0 or absf(dir.angle_to(to)) <= half_arc):
 					targets.append(e)
-			if w == "scythe" and (finisher or float(st["w_yank"]) > 0.0):
+			if w == "scythe" and (finisher or float(st["w_yank"]) > 0.0 or float(st["w_drag"]) > 0.0):
+				# the finisher always yanks; Hooked Edge / the Tollkeeper make every sweep drag
 				pull = pos + dir * 50.0
-				pull_s = 520.0 + 260.0 * float(st["w_yank"]) + (300.0 if finisher else 0.0)
+				pull_s = 780.0 + (300.0 if finisher else 0.0)
 	elif action == "dash":
 		var shock := float(st["dash_shock"])
 		var strike := float(st["w_dash_strike"])
 		if shock <= 0.0 and strike <= 0.0:
 			return
-		dmg = (shock + strike) * st["dmg_meta"]
 		for e in _ecache:
 			if e.hp <= 0:
 				continue
@@ -640,22 +688,70 @@ func _resolve_action(hero: Node, action: String, pos: Vector2, dir: Vector2, seq
 			var lane: bool = strike > 0.0 and _seg_dist(e.position, pos, pos + dir * 190.0) <= 55.0 + e.radius
 			if near or lane:
 				targets.append(e)
+				per_target.append(((shock if near else 0.0) + (strike if lane else 0.0)) * float(st["dmg_meta"]))
 		if strike > 0.0:
 			_rings.append([pos + dir * 150.0, 50.0, 0.25, 0.25, hero.wdef["color"]])
-	if mode == MODE_AUTH and action.begins_with("attack") and not _props.is_empty():
+		if shock > 0.0:
+			_broadcast_free_arcs(pos, targets)
+	if mode == MODE_AUTH and (action.begins_with("attack") or sig) and not _props.is_empty():
 		var rr: float = float(wd["reach"]) * hero.reach_mult() * 0.5 + 20.0
-		_hit_props(pos + dir * rr, rr)
+		if action == "whirl" or action == "harvest":
+			_hit_props(pos, hero.whirl_radius() if action == "whirl" else hero.harvest_radius())
+		else:
+			_hit_props(pos + dir * rr, rr)
 	if targets.is_empty():
 		return
 	var big := false
-	for e in targets:
-		big = _apply_hit(hero, e, dmg, seq, mode, pos, pull, pull_s) or big
-	if mode == MODE_AUTH and st["chain"] > 0:
+	for i in range(targets.size()):
+		var e = targets[i]
+		var amt: float = per_target[i] if not per_target.is_empty() else dmg
+		big = _apply_hit(hero, e, amt, seq, mode, pos, pull, pull_s) or big
+	if hero.controlled and w == "scythe" and (action.begins_with("attack") or action == "lunge"):
+		hero.add_souls(targets.size())
+	if mode == MODE_AUTH and st["chain"] > 0 and action != "dash":
 		_chain(hero, targets[0], dmg * 0.5, int(st["chain"]))
 	if hero.controlled:
 		shake(6.0 if big else 3.0)
+		if sig:
+			shake(10.0)
 		if big and not Net.online and hero_nodes.size() == 1:
 			_hitstop(0.05)
+
+## Thunder Step's sparks (visual only: the damage is applied with the dash).
+func _broadcast_free_arcs(pos: Vector2, targets: Array) -> void:
+	for e in targets:
+		if e.position.distance_to(pos) <= 140.0 + e.radius:
+			arcs.append([pos + Vector2(0, -40), e.position + Vector2(0, -40), 0.2])
+
+## Every device: the flash of a signature move (rings, sparks, sound).
+func _signature_visual(hero: Node, action: String, pos: Vector2, dir: Vector2, col: Color) -> void:
+	match action:
+		"whirl":
+			_rings.append([pos, hero.whirl_radius(), 0.4, 0.4, col])
+			spark(pos + Vector2(0, -40), col, 16)
+			sfx("swing_spear", pos)
+		"dawn":
+			_rings.append([pos + dir * 200.0, 120.0, 0.45, 0.45, Color(1, 0.9, 0.55)])
+			spark(pos + dir * 80.0 + Vector2(0, -50), Color(1, 0.9, 0.55), 22)
+			sfx("slam_impact", pos)
+		"harvest":
+			_rings.append([pos, hero.harvest_radius(), 0.5, 0.5, Color(0.75, 0.45, 1.0)])
+			_rings.append([pos, hero.harvest_radius() * 0.6, 0.35, 0.35, Color(1, 0.9, 1.0)])
+			spark(pos + Vector2(0, -50), Color(0.85, 0.6, 1.0), 26)
+			sfx("special_moon", pos)
+		"lunge":
+			spark(pos + dir * 120.0 + Vector2(0, -50), col, 10)
+			sfx("swing_blades", pos)
+
+## The raised Aegis turned a blow aside (owner side; others see the flash in the guard pose).
+func on_block(hero: Node, from: Vector2) -> void:
+	var at: Vector2 = hero.position + (from - hero.position).normalized() * 46.0 + Vector2(0, -55)
+	spark(at, Color(1, 0.9, 0.55), 14)
+	spark(at, Color(1, 1, 1), 6)
+	sfx("projectile_hit", at)
+	float_text(at + Vector2(0, -40), "BLOCK", Color(1, 0.9, 0.55))
+	if hero.controlled:
+		shake(3.0)
 
 static func _seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
 	var ab := b - a
@@ -667,15 +763,16 @@ static func _seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
 
 # ---------------------------------------------------------------- aimed specials (every device runs the same timeline)
 
-## Radius of a heroine's special at its landing point (for the reticle).
+## Radius of a heroine's special at its landing point (for the reticle). Twin: half-width of the Moonstep lane;
+## scythe: how wide the Gravechain Hook catches.
 func special_radius(hero: Node) -> float:
 	var am: float = hero.area_mult()
 	match String(hero.weapon_id):
-		"spear": return 125.0 * am
-		"twin": return 100.0 * am
+		"spear": return 110.0 * am
+		"twin": return 62.0 * am
 		"bow": return 135.0 * am
 		"shield": return (115.0 if float(hero.stats["w_anchor"]) > 0.0 else 75.0) * am
-		"scythe": return 175.0 * am
+		"scythe": return 62.0 * am
 	return 100.0
 
 func _start_cast(hero: Node, pos: Vector2, dir: Vector2, aim: Vector2, seq: int, mode: int) -> void:
@@ -686,24 +783,18 @@ func _start_cast(hero: Node, pos: Vector2, dir: Vector2, aim: Vector2, seq: int,
 		"hit": float(hero.special_hit), "seq": seq, "mode": mode, "dmg": hero.attack_damage("special"),
 		"r": special_radius(hero), "stage": 0, "tick": 0.0, "n": 0, "pos": pos, "hits": {},
 		"color": hero.wdef["color"], "local": hero.controlled, "life": 6.0, "bounces": 0, "target": null,
-		"twice": float(st["w_twice"]), "pool": float(st["w_pool"]), "whirl": float(st["w_whirl"]),
+		"twice": float(st["w_twice"]), "pool": float(st["w_pool"]) * float(st["dmg_meta"]), "whirl": float(st["w_whirl"]),
 		"ret": float(st["w_return"]), "pulses": 3 + int(st["w_pulses"]), "anchor": float(st["w_anchor"]),
-		"ricochet": 2 + int(st["w_ricochet"]), "soul": float(st["w_soul"]), "det": float(st["w_detonate"])}
+		"ricochet": 2 + int(st["w_ricochet"]), "soul": float(st["w_soul"]), "multi": int(st["w_multi"])}
 	if casts.size() >= MAX_CASTS:
 		casts.pop_front()
 	casts.append(c)
-	if c["kind"] == "shield":
-		# a long Bastion spin plus the ricochets home must not be cut short by the generic lifetime
-		c["life"] = 6.0 + float(c["anchor"]) + 0.6 * float(c["ricochet"])
-	if c["kind"] == "twin" and float(st["w_multi"]) > 0.0:
-		# Eclipse: a second crescent mirrored across the aim line
-		var perp := (aim - pos).normalized().orthogonal() * 70.0
-		c["to"] = aim + perp
-		var c2 := c.duplicate()
-		c2["hits"] = {}
-		c2["to"] = aim - perp
-		c2["seq"] = seq + 50000
-		casts.append(c2)
+	match c["kind"]:
+		"shield":
+			# a long Bastion spin plus the ricochets home must not be cut short by the generic lifetime
+			c["life"] = 6.0 + float(c["anchor"]) + 0.6 * float(c["ricochet"])
+		"spear":
+			c["life"] = Game.SPEAR_LODGE_TIME + 5.0
 
 func _update_casts(delta: float) -> void:
 	var i := casts.size() - 1
@@ -715,13 +806,15 @@ func _update_casts(delta: float) -> void:
 		var done: bool = c["life"] <= 0.0 or not is_instance_valid(hero)
 		if not done:
 			match String(c["kind"]):
-				"spear": done = _cast_slam(c, hero, delta)
-				"twin": done = _cast_crescent(c, hero, delta)
+				"spear": done = _cast_lance(c, hero, delta)
+				"twin": done = _cast_moonstep(c, hero, delta)
 				"bow": done = _cast_volley(c, hero, delta)
 				"shield": done = _cast_aegis(c, hero, delta)
-				"scythe": done = _cast_vortex(c, hero, delta)
+				"scythe": done = _cast_hook(c, hero, delta)
 				_: done = true
 		if done:
+			if c.has("pool_ref"):
+				c["pool_ref"][3] = minf(float(c["pool_ref"][3]), 0.4)
 			casts.remove_at(i)
 		i -= 1
 	i = pools.size() - 1
@@ -771,6 +864,19 @@ func _area_hit(c: Dictionary, hero: Node, at: Vector2, r: float, dmg: float, sal
 		n += 1
 	return n
 
+## Hits everything within half-width w of the segment a-b. Returns how many were caught.
+func _lane_hit(c: Dictionary, hero: Node, a: Vector2, b: Vector2, w: float, dmg: float, salt: int) -> int:
+	if int(c["mode"]) == MODE_VISUAL:
+		return 0
+	var n := 0
+	for e in _ecache:
+		if e.hp > 0 and _seg_dist(e.position, a, b) <= w + e.radius:
+			_apply_hit(hero, e, dmg, salt, c["mode"], a)
+			n += 1
+	if int(c["mode"]) == MODE_AUTH and not _props.is_empty():
+		_hit_props(a.lerp(b, 0.5), maxf(w, a.distance_to(b) * 0.5))
+	return n
+
 func _impact(c: Dictionary, at: Vector2, r: float, strength: float) -> void:
 	var col: Color = c["color"]
 	_rings.append([at, r, 0.45, 0.45, col])
@@ -784,22 +890,58 @@ func _impact(c: Dictionary, at: Vector2, r: float, strength: float) -> void:
 	else:
 		shake(3.0 + 3.0 * strength)
 
-## Kaela-style spear: the heroine leaps (hero.gd moves her) and slams the aimed point.
-func _cast_slam(c: Dictionary, hero: Node, _delta: float) -> bool:
+## The heroine's Emberlance while it is out of her hands (thrown, lodged or flying home), or null.
+func lance_of(hero: Node):
+	for c in casts:
+		if c["hero"] == hero and String(c["kind"]) == "spear":
+			return c
+	return null
+
+func _lance_recall(c: Dictionary) -> void:
+	c["stage"] = 3
+	c["hits"] = {}
+	if c.has("pool_ref"):
+		c["pool_ref"][3] = minf(float(c["pool_ref"][3]), 0.6)
+	spark(c["to"] + Vector2(0, -40), c["color"], 12)
+	sfx("special_ember", c["to"])
+
+## Emberlance: hurled along the aimed line (piercing), it lodges with a flare and burns there until
+## SPECIAL / ATTACK calls it back (or SPEAR_LODGE_TIME passes); flying home it cuts through everything again.
+func _cast_lance(c: Dictionary, hero: Node, delta: float) -> bool:
 	var t: float = c["t"]
-	var hit: float = c["hit"]
-	if c["stage"] == 0 and t >= hit:
-		c["stage"] = 1
-		_impact(c, c["to"], c["r"], 1.0)
-		sfx("brute_slam", c["to"])
-		_area_hit(c, hero, c["to"], c["r"], c["dmg"], c["seq"] * 8)
-		if c["pool"] > 0.0:
-			pools.append([c["to"], c["r"] * 0.8, c["pool"], 2.2, hero, c["mode"], 0.15, 0, c["seq"]])
-	if c["stage"] == 1 and c["twice"] > 0.0 and t >= hit + 0.32:
-		c["stage"] = 2
-		_impact(c, c["to"], c["r"] * 0.85, 0.6)
-		_area_hit(c, hero, c["to"], c["r"] * 0.85, c["dmg"] * c["twice"] / 100.0, c["seq"] * 8 + 1)
-	return t > hit + (0.75 if c["twice"] > 0.0 else 0.45)
+	match int(c["stage"]):
+		0:
+			c["pos"] = hero.position
+			if t >= c["hit"]:
+				c["stage"] = 1
+				c["from"] = hero.position
+		1:
+			var arrived := _fly(c, c["to"], 1800.0, delta)
+			_area_hit(c, hero, c["pos"], 45.0, c["dmg"] * 0.6, c["seq"] * 64, true)
+			if arrived:
+				c["stage"] = 2
+				c["t2"] = 0.0
+				c["hits"] = {}
+				_impact(c, c["to"], c["r"], 0.8)
+				_area_hit(c, hero, c["to"], c["r"], c["dmg"], c["seq"] * 64 + 1)
+				if c["pool"] > 0.0:
+					var p := [c["to"], c["r"] * 0.8, c["pool"], Game.SPEAR_LODGE_TIME + 0.5, hero, c["mode"], 0.15, 0, c["seq"]]
+					pools.append(p)
+					c["pool_ref"] = p
+		2:
+			c["t2"] += delta
+			if c["twice"] > 0.0 and not c.has("echoed") and c["t2"] >= 0.45:
+				c["echoed"] = true
+				_impact(c, c["to"], c["r"] * 0.9, 0.6)
+				_area_hit(c, hero, c["to"], c["r"] * 0.9, c["dmg"] * c["twice"] / 100.0, c["seq"] * 64 + 2)
+			if c["t2"] >= Game.SPEAR_LODGE_TIME:
+				_lance_recall(c)
+		3:
+			_area_hit(c, hero, c["pos"], 55.0, c["dmg"] * 0.8, c["seq"] * 64 + 3, true)
+			if _fly(c, hero.position, 2000.0, delta):
+				spark(hero.position + Vector2(0, -60), c["color"], 10)
+				return true
+	return false
 
 ## Moving projectile helper: moves c.pos toward `goal`; true when it arrives.
 func _fly(c: Dictionary, goal: Vector2, speed: float, delta: float) -> bool:
@@ -812,42 +954,98 @@ func _fly(c: Dictionary, goal: Vector2, speed: float, delta: float) -> bool:
 	c["pos"] = p + to / to.length() * step
 	return false
 
-## Twin blades: a crescent flies to the point, whirls there, and (Homeward) flies back.
-func _cast_crescent(c: Dictionary, hero: Node, delta: float) -> bool:
+const MOONSTEP_ECHO := 0.3    ## s after the blink until the first afterimage cut
+const MOONSTEP_ECHO_GAP := 0.2
+
+## Moonfang: Moonstep. She blinks along the aimed line (hero.gd moves her), cutting everything on it; her
+## moonlit afterimages stay on the line and cut it again (Eclipse: once more), and with Homeward Crescent a
+## crescent flies back from where she landed to where she started.
+func _cast_moonstep(c: Dictionary, hero: Node, delta: float) -> bool:
 	var t: float = c["t"]
+	var strikes: int = 1 + int(c["multi"])
 	match int(c["stage"]):
 		0:
 			if t >= c["hit"]:
 				c["stage"] = 1
-				c["pos"] = c["from"] + Vector2(0, 0)
-		1:
-			var arrived := _fly(c, c["to"], 1300.0, delta)
-			_area_hit(c, hero, c["pos"], 50.0, c["dmg"] * 0.5, c["seq"] * 64, true)
-			if arrived:
-				c["stage"] = 2
-				c["tick"] = 0.0
 				c["n"] = 0
-				c["t2"] = 0.0
-				_rings.append([c["to"], c["r"], 0.3, 0.3, c["color"]])
+				_lane_hit(c, hero, c["from"], c["to"], c["r"], c["dmg"], c["seq"] * 64)
+				_slash_fx(c, 1.0)
+				_ghost_snapshot(c, hero)
 				sfx("special_moon", c["to"])
-		2:
-			c["t2"] += delta
-			c["tick"] -= delta
-			if c["tick"] <= 0.0:
-				c["tick"] = 0.16
+		1:
+			var at: float = float(c["hit"]) + MOONSTEP_ECHO + MOONSTEP_ECHO_GAP * int(c["n"])
+			if int(c["n"]) < strikes and t >= at:
 				c["n"] += 1
-				_area_hit(c, hero, c["to"], c["r"], c["dmg"] * 0.3, c["seq"] * 64 + 1 + c["n"])
-				spark(c["to"] + Vector2(0, -30), c["color"], 4)
-			if c["t2"] >= 0.7 * (1.0 + c["whirl"] / 100.0):
+				_lane_hit(c, hero, c["from"], c["to"], c["r"], c["dmg"] * 0.5 * (1.0 + c["whirl"] / 100.0), c["seq"] * 64 + 10 + c["n"])
+				_slash_fx(c, 0.7)
+				sfx("swing_blades", c["from"].lerp(c["to"], 0.5))
+			elif int(c["n"]) >= strikes and t >= at + 0.1:
 				if c["ret"] > 0.0:
-					c["stage"] = 3
+					c["stage"] = 2
+					c["pos"] = c["to"]
 					c["hits"] = {}
 				else:
 					return true
-		3:
-			var home: Vector2 = hero.position
-			_area_hit(c, hero, c["pos"], 55.0, c["dmg"] * 0.5 * c["ret"] / 100.0, c["seq"] * 64 + 40, true)
-			if _fly(c, home, 1400.0, delta):
+		2:
+			_area_hit(c, hero, c["pos"], 60.0, c["dmg"] * c["ret"] / 100.0, c["seq"] * 64 + 40, true)
+			if _fly(c, c["from"], 1500.0, delta):
+				spark(c["from"] + Vector2(0, -40), c["color"], 8)
+				return true
+	return false
+
+func _slash_fx(c: Dictionary, strength: float) -> void:
+	var a: Vector2 = c["from"]
+	var b: Vector2 = c["to"]
+	for k in range(5):
+		var p := a.lerp(b, (k + 0.5) / 5.0)
+		spark(p + Vector2(0, -45), c["color"] if k % 2 == 0 else Color(1, 1, 1), int(4 * strength) + 1)
+	c["flash"] = 0.25
+	if c["local"]:
+		shake(5.0 * strength)
+
+## Keeps the frame she blinked with, so the afterimages along the line look like her.
+func _ghost_snapshot(c: Dictionary, hero: Node) -> void:
+	var b = hero.get("body")
+	if b == null or not is_instance_valid(b) or b._spr == null or b._spr.texture == null:
+		return
+	var sp: Sprite2D = b._spr
+	c["ghost"] = [sp.texture, sp.region_rect, sp.offset, sp.scale]
+
+## Gravechain Hook: the chain lashes out along the aimed line; every foe its head passes is struck and hooked,
+## dragged to her, and rent again when the chain snaps back. Hooked foes give Souls (and Soulreap heals).
+func _cast_hook(c: Dictionary, hero: Node, delta: float) -> bool:
+	var t: float = c["t"]
+	match int(c["stage"]):
+		0:
+			c["pos"] = hero.position
+			if t >= c["hit"]:
+				c["stage"] = 1
+				c["from"] = hero.position
+		1:
+			var arrived := _fly(c, c["to"], 1900.0, delta)
+			var home: Vector2 = hero.position + (c["to"] - hero.position).normalized() * 70.0
+			c["n"] += _area_hit(c, hero, c["pos"], c["r"], c["dmg"], c["seq"] * 64, true, home, 1700.0)
+			if arrived:
+				c["stage"] = 2
+				spark(c["to"] + Vector2(0, -40), Color(0.85, 0.6, 1.0), 8)
+		2:
+			if _fly(c, hero.position, 1700.0, delta):
+				var caught: int = c["n"]
+				if int(c["mode"]) != MODE_VISUAL:
+					var hits: Dictionary = c["hits"]
+					for e in _ecache:
+						if e.hp > 0 and hits.has(e.eid):
+							# rent at her feet: the blow knocks it further in, not back out
+							var inward: Vector2 = (hero.position - e.position).normalized()
+							_apply_hit(hero, e, c["dmg"] * 0.5, c["seq"] * 64 + 1, c["mode"], e.position - inward * 20.0)
+				if caught > 0:
+					_rings.append([hero.position, 110.0, 0.35, 0.35, Color(0.8, 0.55, 1.0)])
+					sfx("slam_impact", hero.position)
+					if hero.controlled:
+						hero.add_souls(caught)
+						if c["soul"] > 0.0:
+							hero.heal(c["soul"] * caught)
+							float_text(hero.position + Vector2(0, -130), "+%d" % int(c["soul"] * caught), Color(0.4, 1, 0.6))
 				return true
 	return false
 
@@ -892,8 +1090,8 @@ func _cast_aegis(c: Dictionary, hero: Node, delta: float) -> bool:
 					c["t2"] = 0.0
 					c["tick"] = 0.1
 				else:
+					# ricochet on to foes not struck yet (the ones the impact hit stay marked)
 					c["stage"] = 2
-					c["hits"] = {}
 		2:
 			# ricochet: hop to the nearest foe not yet struck
 			var tgt = c["target"]
@@ -945,48 +1143,23 @@ func _cast_aegis(c: Dictionary, hero: Node, delta: float) -> bool:
 				return true
 	return false
 
-## Chain scythe: hurled to the point, spins into a vortex that drags foes in, then bursts.
-func _cast_vortex(c: Dictionary, hero: Node, delta: float) -> bool:
-	var t: float = c["t"]
-	match int(c["stage"]):
-		0:
-			if t >= c["hit"]:
-				c["stage"] = 1
-		1:
-			if _fly(c, c["to"], 1200.0, delta):
-				c["stage"] = 2
-				c["t2"] = 0.0
-				c["tick"] = 0.0
-				_rings.append([c["to"], c["r"], 0.35, 0.35, c["color"]])
-		2:
-			c["t2"] += delta
-			c["tick"] -= delta
-			var dur: float = 1.0 * (1.0 + c["whirl"] / 100.0)
-			if c["tick"] <= 0.0:
-				c["tick"] = 0.15
-				c["n"] += 1
-				var caught := _area_hit(c, hero, c["to"], c["r"], c["dmg"] * 0.45, c["seq"] * 64 + c["n"], false, c["to"], 260.0 * (1.0 + c["whirl"] / 200.0))
-				if caught > 0 and c["soul"] > 0.0 and hero.controlled and c["n"] % 3 == 1:
-					hero.heal(c["soul"] * caught)
-			if c["t2"] >= dur:
-				var dm: float = c["dmg"] * (1.0 + 2.0 * c["det"] / 100.0)
-				_impact(c, c["to"], c["r"], 1.0 if c["det"] > 0.0 else 0.5)
-				_area_hit(c, hero, c["to"], c["r"], dm, c["seq"] * 64 + 60)
-				c["stage"] = 3
-		3:
-			if _fly(c, hero.position, 1500.0, delta):
-				return true
-	return false
-
 # ---------------------------------------------------------------- bow arrows (every device simulates; host damages)
 
 func _spawn_arrows(hero: Node, pos: Vector2, dir: Vector2, charge: float, seq: int, mode: int) -> void:
 	var st: Dictionary = hero.stats
 	var full := charge >= 0.999
-	var dmg: float = hero.attack_damage("attack") * (1.0 + 1.6 * clampf(charge, 0.0, 1.0))
-	var pierce: int = (1 + int(st["w_pierce"])) if full else mini(int(st["w_pierce"]), 3)
-	var speed := 1500.0 if full else 1150.0
+	var perfect := charge >= 1.2 ## let go in the flash at full draw
+	var dmg: float = hero.attack_damage("attack") * (1.0 + 1.6 * clampf(charge, 0.0, 1.0)) * (1.5 if perfect else 1.0)
+	# quick shots pierce w_pierce foes; drawn shots one more (+ the Gale's pierce-all); a Perfect Shot pierces all
+	var pierce: int = int(st["w_pierce"])
+	if full:
+		pierce += 1 + int(st["w_fullpierce"])
+	if perfect:
+		pierce = 999
+	var speed := 1800.0 if perfect else (1500.0 if full else 1150.0)
 	var n := 1 + (int(st["w_split"]) if full else 0)
+	if perfect:
+		_rings.append([pos + dir * 60.0, 60.0, 0.3, 0.3, Color(1, 0.9, 0.5)])
 	for k in range(n):
 		if hshots.size() >= MAX_HSHOTS:
 			hshots.pop_front()
@@ -994,8 +1167,9 @@ func _spawn_arrows(hero: Node, pos: Vector2, dir: Vector2, charge: float, seq: i
 		if k > 0:
 			off = deg_to_rad(9.0 * ((k + 1) / 2)) * (1.0 if k % 2 == 1 else -1.0)
 		var d := dir.rotated(off)
-		hshots.append({"pos": pos + d * 30.0, "vel": d * speed, "dmg": dmg, "pierce": pierce, "life": 0.62,
-			"hero": hero, "mode": mode, "seq": seq * 8 + k, "hits": {}, "full": full, "color": hero.wdef["color"]})
+		hshots.append({"pos": pos + d * 30.0, "vel": d * speed, "dmg": dmg, "pierce": pierce, "life": 0.62 if not perfect else 0.55,
+			"hero": hero, "mode": mode, "seq": seq * 8 + k, "hits": {}, "full": full, "perfect": perfect,
+			"color": hero.wdef["color"] if not perfect else Color(1, 0.95, 0.6)})
 
 func _update_hshots(delta: float) -> void:
 	var i := hshots.size() - 1
@@ -1013,6 +1187,8 @@ func _update_hshots(delta: float) -> void:
 				if e.position.distance_squared_to(s["pos"]) < (e.radius + 16.0) * (e.radius + 16.0):
 					hits[e.eid] = true
 					_apply_hit(hero, e, s["dmg"], s["seq"], s["mode"], s["pos"] - s["vel"] * 0.05)
+					if hits.size() == 1 and int(s["mode"]) == MODE_AUTH and int(hero.stats["chain"]) > 0:
+						_chain(hero, e, s["dmg"] * 0.5, int(hero.stats["chain"]))
 					s["pierce"] -= 1
 					if s["pierce"] < 0:
 						dead = true
@@ -1485,6 +1661,7 @@ func _physics_process(delta: float) -> void:
 	overlay.queue_redraw()
 	groundfx.queue_redraw()
 	airfx.queue_redraw()
+	ghostfx.queue_redraw()
 	queue_redraw()
 
 func _check_defeat() -> void:
@@ -1663,8 +1840,8 @@ func _draw_overlay() -> void:
 	for t in texts:
 		var a: float = clampf(t[3] * 2.0, 0.0, 1.0)
 		var size := 30 if String(t[1]).ends_with("!") else 24
-		overlay.draw_string_outline(font, t[0] - Vector2(30, 0), t[1], HORIZONTAL_ALIGNMENT_CENTER, 60, size, 6, Color(0.05, 0.02, 0.05, a))
-		overlay.draw_string(font, t[0] - Vector2(30, 0), t[1], HORIZONTAL_ALIGNMENT_CENTER, 60, size, Color(t[2], a))
+		overlay.draw_string_outline(font, t[0] - Vector2(80, 0), t[1], HORIZONTAL_ALIGNMENT_CENTER, 160, size, 6, Color(0.05, 0.02, 0.05, a))
+		overlay.draw_string(font, t[0] - Vector2(80, 0), t[1], HORIZONTAL_ALIGNMENT_CENTER, 160, size, Color(t[2], a))
 
 # ---------------------------------------------------------------- weapon / special / exit drawing
 
@@ -1690,36 +1867,62 @@ func _draw_groundfx() -> void:
 		var a: Vector2 = h.position
 		var b: Vector2 = h.aim_point
 		var n := int(clampf(a.distance_to(b) / 34.0, 2.0, 16.0))
-		var leap: bool = h.weapon_id == "spear"
-		for k in range(1, n):
-			var f := float(k) / n
-			var p := a.lerp(b, f)
-			if leap:
-				p.y -= sin(f * PI) * 70.0
-			groundfx.draw_circle(p, 4.0, Color(col, 0.55))
-		_reticle(b, r, Color(col.r, col.g, col.b, 0.85 + 0.15 * sin(now * 8.0)), now * 0.8)
+		var wid: String = h.weapon_id
+		if (wid == "twin" or wid == "scythe") and a.distance_to(b) > 8.0:
+			# a lane: Moonstep cuts all of it; the Gravechain hooks whatever its head passes
+			var d := (b - a).normalized()
+			var side := d.orthogonal() * r * Vector2(1.0, 0.5)
+			var flick := 0.45 + 0.2 * sin(now * 8.0)
+			groundfx.draw_colored_polygon(PackedVector2Array([a + side, b + side, b - side, a - side]), Color(col, 0.12))
+			groundfx.draw_line(a + side, b + side, Color(col, flick), 3.0)
+			groundfx.draw_line(a - side, b - side, Color(col, flick), 3.0)
+			for k in range(1, n):
+				groundfx.draw_circle(a.lerp(b, float(k) / n), 4.0, Color(col, 0.55))
+			_reticle(b, r * 1.2, Color(col.r, col.g, col.b, 0.8), now * 1.4)
+		else:
+			for k in range(1, n):
+				groundfx.draw_circle(a.lerp(b, float(k) / n), 4.0, Color(col, 0.55))
+			_reticle(b, r, Color(col.r, col.g, col.b, 0.85 + 0.15 * sin(now * 8.0)), now * 0.8)
 	# telegraphs of specials about to land (every device sees them)
 	for c in casts:
 		var col: Color = c["color"]
 		var r: float = c["r"]
 		var k: String = c["kind"]
 		var st: int = c["stage"]
-		if (k == "spear" and st == 0) or (k == "bow" and st <= 1):
+		if k == "spear" and st == 2:
+			# the lodged lance: a ring of embers burning round it, tightening as it waits to be called back
+			var p: Vector2 = c["to"]
+			var f: float = clampf(float(c.get("t2", 0.0)) / Game.SPEAR_LODGE_TIME, 0.0, 1.0)
+			groundfx.draw_set_transform(p, 0.0, Vector2(1, 0.5))
+			groundfx.draw_circle(Vector2.ZERO, r * 0.55, Color(col, 0.14 + 0.06 * sin(now * 9.0)))
+			for j in range(3):
+				var a0: float = now * 3.0 + j * TAU / 3.0
+				groundfx.draw_arc(Vector2.ZERO, r * (0.45 + 0.12 * j), a0, a0 + 1.6, 16, Color(col, 0.55), 4.0)
+			groundfx.draw_arc(Vector2.ZERO, r * 0.8, -PI / 2, -PI / 2 + TAU * (1.0 - f), 32, Color(1, 0.85, 0.5, 0.5), 3.0)
+			groundfx.draw_set_transform(Vector2.ZERO)
+		elif k == "twin" and st == 1 and c["from"].distance_to(c["to"]) > 8.0:
+			# the moonlit lane her afterimages will cut again
+			var a: Vector2 = c["from"]
+			var b: Vector2 = c["to"]
+			var al := 0.22 + 0.1 * sin(now * 20.0)
+			_lens(groundfx, a, b, r * 0.9, Color(col, al), 0.5)
+			_lens(groundfx, a, b, r * 0.35, Color(0.85, 0.95, 1.0, al * 1.6), 0.5)
+		elif (k == "bow" and st <= 1):
 			var land: float = c["hit"] + (0.35 if k == "bow" else 0.0)
 			var f := clampf(c["t"] / land, 0.0, 1.0)
 			_reticle(c["to"], r * (1.25 - 0.25 * f), Color(col, 0.5 + 0.5 * f), now * 1.6)
 			groundfx.draw_set_transform(c["to"], 0.0, Vector2(1, 0.5))
 			groundfx.draw_circle(Vector2.ZERO, r * f, Color(col, 0.18))
 			groundfx.draw_set_transform(Vector2.ZERO)
-		elif (k == "twin" and st == 2) or (k == "shield" and st == 3) or (k == "scythe" and st == 2):
+		elif k == "shield" and st == 3:
 			var p: Vector2 = c["to"]
 			groundfx.draw_set_transform(p, 0.0, Vector2(1, 0.5))
 			groundfx.draw_circle(Vector2.ZERO, r, Color(col, 0.16))
 			for j in range(3):
-				var a0: float = now * (7.0 if k != "scythe" else -5.0) + j * TAU / 3.0
+				var a0: float = now * 7.0 + j * TAU / 3.0
 				groundfx.draw_arc(Vector2.ZERO, r * (0.55 + 0.15 * j), a0, a0 + 1.9, 18, Color(col, 0.7), 5.0)
 			groundfx.draw_set_transform(Vector2.ZERO)
-		elif st == 0 and (k == "twin" or k == "shield" or k == "scythe"):
+		elif st == 0 and (k == "shield" or k == "spear"):
 			_reticle(c["to"], r, Color(col, 0.6), now)
 	for p in pools:
 		var a: float = clampf(p[3], 0.0, 1.0)
@@ -1753,9 +1956,12 @@ func _draw_airfx() -> void:
 		match k:
 			"twin":
 				if st >= 1:
-					var at: Vector2 = c["to"] + Vector2(0, -50) if st == 2 else p
-					_crescent(at, now * 22.0, 46.0, col)
-					_crescent(at, now * 22.0 + PI, 46.0, col)
+					_moonstep_airfx(c, now)
+				if st == 2:
+					_crescent(p, now * 22.0, 46.0, col)
+					_crescent(p, now * 22.0 + PI, 46.0, col)
+			"spear":
+				_lance_airfx(c, now)
 			"bow":
 				if st >= 1:
 					var land: float = c["hit"] + 0.35
@@ -1779,11 +1985,88 @@ func _draw_airfx() -> void:
 					_shield_airfx(c, now)
 			"scythe":
 				if st >= 1:
-					var at: Vector2 = c["to"] + Vector2(0, -40) if st == 2 else p
-					airfx.draw_circle(at, 46.0, Color(col, 0.25))
-					if st == 1 or st == 3:
-						var hp_: Vector2 = c["hero"].position + Vector2(0, -50) if is_instance_valid(c["hero"]) else at
-						airfx.draw_line(hp_, at, Color(0.7, 0.55, 1.0, 0.55), 3.0)
+					# the chain: glowing links from her hand to the hook, souls trailing off it
+					var hp_: Vector2 = c["hero"].position + Vector2(0, -60) if is_instance_valid(c["hero"]) else p
+					var n := int(clampf(hp_.distance_to(p) / 22.0, 2.0, 40.0))
+					for j in range(n + 1):
+						var q := hp_.lerp(p, float(j) / n) + Vector2(0, sin(j * 0.9 + now * 20.0) * 3.0)
+						airfx.draw_circle(q, 5.0, Color(0.75, 0.55, 1.0, 0.55))
+					airfx.draw_circle(p, 40.0, Color(col, 0.22))
+					airfx.draw_circle(p, 18.0, Color(0.9, 0.8, 1.0, 0.4))
+
+## Moonstep: the blink's bright cut, then her moonlit afterimages standing along the line.
+func _moonstep_airfx(c: Dictionary, now: float) -> void:
+	var col: Color = c["color"]
+	var a: Vector2 = c["from"]
+	var b: Vector2 = c["to"]
+	var fl: float = maxf(0.0, float(c.get("flash", 0.0)) - get_physics_process_delta_time() * 0.5)
+	c["flash"] = fl
+	if fl > 0.0:
+		var k := fl / 0.25
+		var lift := Vector2(0, -55)
+		_lens(airfx, a + lift, b + lift, 26.0 * k + 6.0, Color(col, 0.65 * k), 1.0)
+		_lens(airfx, a + lift, b + lift, 7.0 * k + 2.0, Color(1, 1, 1, k), 1.0)
+		for j in range(6):
+			var q := (a + lift).lerp(b + lift, (j + 0.5) / 6.0)
+			_crescent(q, (b - a).angle() + PI * 0.5 + j, 18.0 * k + 6.0, Color(col, 0.6 * k))
+
+## Moonstep's afterimages (normal blend, a cold moonlit tint): her blink pose standing along the line.
+func _moonstep_ghosts(c: Dictionary, now: float) -> void:
+	if int(c["stage"]) != 1 or not c.has("ghost"):
+		return
+	var a: Vector2 = c["from"]
+	var b: Vector2 = c["to"]
+	var g: Array = c["ghost"]
+	var strikes: int = 1 + int(c["multi"])
+	var left := 1.0 - clampf((float(c["t"]) - float(c["hit"])) / (MOONSTEP_ECHO + MOONSTEP_ECHO_GAP * strikes + 0.1), 0.0, 1.0)
+	for j in range(4):
+		var p := a.lerp(b, (j + 0.5) / 4.0)
+		var sh := sin(now * 30.0 + j) * 2.0
+		ghostfx.draw_set_transform(p + Vector2(sh, 0), 0.0, g[3])
+		ghostfx.draw_texture_rect_region(g[0], Rect2(g[2], g[1].size), g[1], Color(1, 1, 1, 0.6 * left))
+	ghostfx.draw_set_transform(Vector2.ZERO)
+
+func _draw_ghosts() -> void:
+	var now := Time.get_ticks_msec() * 0.001
+	for c in casts:
+		if String(c["kind"]) == "twin":
+			_moonstep_ghosts(c, now)
+
+## A tapered blade of light from a to b (widest in the middle), squashed by `squash` vertically.
+func _lens(canvas: CanvasItem, a: Vector2, b: Vector2, w: float, col: Color, squash: float) -> void:
+	var d := b - a
+	if d.length() < 4.0:
+		return
+	var n := d.normalized().orthogonal() * Vector2(1.0, squash)
+	var steps := 10
+	var pts := PackedVector2Array()
+	pts.resize((steps + 1) * 2)
+	for i in range(steps + 1):
+		var f := float(i) / steps
+		var wd := w * sin(f * PI) + 0.5
+		pts[i] = a + d * f + n * wd
+		pts[(steps + 1) * 2 - 1 - i] = a + d * f - n * wd
+	canvas.draw_colored_polygon(pts, col)
+
+## Emberlance in flight / lodged / flying home: a fiery streak behind it and a burning glow where it stands.
+func _lance_airfx(c: Dictionary, now: float) -> void:
+	var col: Color = c["color"]
+	var st: int = c["stage"]
+	if st == 0:
+		return
+	var p: Vector2 = c["pos"] + Vector2(0, -50)
+	if st == 2:
+		var tip: Vector2 = c["to"] + Vector2(0, -12)
+		airfx.draw_circle(tip, 26.0 + 4.0 * sin(now * 12.0), Color(col, 0.35))
+		for j in range(5):
+			var h := fmod(now * 1.4 + j * 0.21, 1.0)
+			var q: Vector2 = c["to"] + Vector2(sin(j * 2.1 + now) * 24.0, -20.0 - 90.0 * h)
+			airfx.draw_circle(q, 6.0 * (1.0 - h) + 1.0, Color(1.0, 0.7, 0.3, 0.8 * (1.0 - h)))
+		return
+	var goal: Vector2 = (c["to"] if st == 1 else c["hero"].position) + Vector2(0, -50) if is_instance_valid(c["hero"]) else p
+	var d := (goal - p).normalized()
+	airfx.draw_line(p - d * 150.0, p, Color(col, 0.55), 14.0)
+	airfx.draw_line(p - d * 90.0, p, Color(1, 0.9, 0.6, 0.85), 4.0)
 
 func _crescent(at: Vector2, ang: float, r: float, col: Color) -> void:
 	var steps := 10
@@ -1794,8 +2077,8 @@ func _crescent(at: Vector2, ang: float, r: float, col: Color) -> void:
 	for j in range(steps + 1):
 		var a := ang + 1.3 - 2.6 * j / steps
 		_cpts[steps + 1 + j] = at + Vector2(cos(a), sin(a) * 0.6) * r * 0.62 + Vector2(cos(ang), sin(ang) * 0.6) * r * 0.18
-	airfx.draw_colored_polygon(_cpts, Color(col, 0.85))
-	airfx.draw_circle(at, r * 0.3, Color(1, 1, 1, 0.35))
+	airfx.draw_colored_polygon(_cpts, Color(col, col.a * 0.85))
+	airfx.draw_circle(at, r * 0.3, Color(1, 1, 1, 0.35 * col.a))
 
 var _cpts := PackedVector2Array()
 
@@ -1880,18 +2163,55 @@ func _draw_weapon_overlay() -> void:
 	for c in casts:
 		var k: String = c["kind"]
 		var st: int = c["stage"]
-		if st < 1 or (k != "shield" and k != "scythe"):
+		if st < 1 or not (k in ["shield", "scythe", "spear"]):
 			continue
 		if k == "shield":
 			_shield_disc(c, now)
 			continue
-		var lodged: bool = (k == "shield" and st == 3) or (k == "scythe" and st == 2)
-		var at: Vector2 = (c["to"] + Vector2(0, -40)) if lodged else (c["pos"] + Vector2(0, -50))
-		var tex := _icon("weapon_" + k)
-		if tex == null:
+		if k == "spear":
+			_lance_overlay(c)
 			continue
-		var sz := 92.0 if k == "shield" else 110.0
-		var spin := now * (16.0 if k == "shield" else -14.0)
-		overlay.draw_set_transform_matrix(Transform2D(spin, Vector2(1.0, 0.62 if k == "shield" else 0.7), 0.0, at))
-		overlay.draw_texture_rect(tex, Rect2(-sz * 0.5, -sz * 0.5, sz, sz), false)
-		overlay.draw_set_transform(Vector2.ZERO)
+		_hook_overlay(c, now)
+
+## The thrown Emberlance (painted art): flying point-first, then planted slanting in the floor.
+func _lance_overlay(c: Dictionary) -> void:
+	var tex := _icon("weapon_spear")
+	if tex == null:
+		return
+	var st: int = c["stage"]
+	var L := 150.0
+	var w := L * float(tex.get_width()) / float(tex.get_height())
+	var at: Vector2
+	var ang: float
+	if st == 2:
+		# planted: the tip in the floor at the landing point, the haft leaning back toward where it came from
+		var back: Vector2 = (c["from"] - c["to"]).normalized()
+		var tip_dir := Vector2(-back.x * 0.55, 1.0).normalized() # point down into the floor, along its flight
+		at = c["to"] + Vector2(0, -6) - tip_dir * L * 0.5
+		ang = atan2(tip_dir.x, -tip_dir.y)
+		overlay.draw_set_transform(c["to"], 0.0, Vector2(1.0, 0.4))
+		overlay.draw_circle(Vector2.ZERO, 20.0, Color(0, 0, 0, 0.35))
+	else:
+		var goal: Vector2 = c["to"] if st == 1 else (c["hero"].position if is_instance_valid(c["hero"]) else c["to"])
+		var d: Vector2 = goal - c["pos"]
+		at = c["pos"] + Vector2(0, -50)
+		ang = d.angle() + PI * 0.5
+	overlay.draw_set_transform(at, ang, Vector2.ONE)
+	overlay.draw_texture_rect(tex, Rect2(-w * 0.5, -L * 0.5, w, L), false)
+	overlay.draw_set_transform(Vector2.ZERO)
+
+## The Gravechain's hook: the scythe blade on the chain's head, turning as it flies.
+func _hook_overlay(c: Dictionary, now: float) -> void:
+	var tex := _icon("weapon_scythe")
+	if tex == null:
+		return
+	var at: Vector2 = c["pos"] + Vector2(0, -55)
+	var region := Rect2(0, 0, tex.get_width(), tex.get_height() * 0.36)
+	var sz := 96.0
+	var hgt := sz * region.size.y / region.size.x
+	var hero = c["hero"]
+	var d: Vector2 = (at - (hero.position + Vector2(0, -60))) if is_instance_valid(hero) else Vector2.RIGHT
+	var ang := d.angle() + PI * 0.5 + sin(now * 18.0) * 0.25
+	overlay.draw_set_transform(at, ang, Vector2.ONE)
+	overlay.draw_texture_rect_region(tex, Rect2(-sz * 0.5, -hgt * 0.5, sz, hgt), region)
+	overlay.draw_set_transform(Vector2.ZERO)

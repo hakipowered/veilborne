@@ -253,6 +253,20 @@ func play_timed(anim: String, seconds: float, restart := true) -> void:
 		_fit = n / seconds
 
 
+## Holds a pose: shows `anim` frozen at frame index f (a wind-up held while a charge builds).
+func pose(anim: String, f: int) -> void:
+	if current != anim:
+		play(anim, true)
+	if _anim.is_empty():
+		return
+	f = clampi(f, 0, int(_anim["n"]) - 1)
+	_t = float(f)
+	_done = true # stop advancing until the next play()
+	if f != frame:
+		frame = f
+		_show()
+
+
 ## hero.gd helper: state ("idle","run","attack","dash","special","hurt","downed") + combo counter.
 ## hero.gd increments combo BEFORE acting, so combo 1 -> attack1, 2 -> attack2, 0 -> attack3 (finisher).
 func play_hero_state(state: String, combo: int) -> void:

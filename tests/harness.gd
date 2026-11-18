@@ -10,6 +10,7 @@ class FakePad:
 	var dash := false
 	var special_aim := Vector2.ZERO
 	var hold := 0 ## frames left holding special (aimed special)
+	var atk_hold := 0 ## frames left holding ATTACK (hold moves)
 
 var role := "solo"
 var frames := 6000
@@ -29,6 +30,7 @@ var _logged_doors := -1
 var _spec_state := {}
 var god := false ## keep the bot alive to walk the whole run (balance runs leave it off)
 var hazard_frames := 0
+var stats_moves := {} ## signature moves / perfect shots / blocks / recalls the bot pulled off
 var _last_chapter := 0
 
 func _ready() -> void:
@@ -157,21 +159,28 @@ func _physics_process(delta: float) -> void:
 				p.move = (h.position - target).normalized() # kite, don't shoot
 			elif ranged and bd <= want:
 				p.move = Vector2.ZERO
-			if bd < (520 if ranged else 140):
-				h.facing = (target - h.position).normalized()
-				if ranged:
-					p.attack = (frame % 90) < 40 if (frame / 90) % 3 == 0 else frame % 6 < 2 # charged shots and quick taps
-				else:
-					p.attack = frame % 4 < 2
+			if bd < (520 if ranged else 140) or h.state in ["hold", "draw"]:
+				if h.state != "hold" or h.weapon_id != "shield":
+					h.facing = (target - h.position).normalized()
+				_bot_attack(h, p, bd)
+			var lance = h.lance_cast()
+			if lance != null and int(lance["stage"]) == 2 and float(lance.get("t2", 0.0)) > 0.8 and p.hold == 0:
+				# Emberlance lodged for a while: call it back through the crowd
+				p.hold = 2
+				p.special = true
+				p.special_aim = Vector2.ZERO
+				stats_moves["recall"] = int(stats_moves.get("recall", 0)) + 1
 			# aimed special: hold the button and drag the reticle onto the foe, release to cast
-			if frame % 70 == 0 and h.special_cd <= 0.0 and bd < 460 and p.hold == 0:
+			elif frame % 70 == 0 and h.special_cd <= 0.0 and bd < 460 and p.hold == 0 and lance == null and not (h.state in ["hold", "draw"]):
 				p.hold = 14
 				p.special = true
 				p.special_aim = ((target - h.position) / h.aim_range()).limit_length(1.0)
 				if (frame / 70) % 4 == 3:
 					p.special_aim = Vector2.ZERO # quick tap: auto-aim
 					p.hold = 2
-			p.dash = frame % 97 == 0
+			p.dash = frame % 97 == 0 and h.state != "hold" and h.state != "draw"
+			if h.weapon_id == "twin" and frame % 97 in [0, 1, 2]:
+				p.attack = frame % 97 == 2 # a fresh press right out of the dash: Fang Lunge
 		elif arena.rewards and arena.rewards.bot_target(h) != Vector2.INF:
 			# walk to the chamber's reward (boon orb, forge, chalice, gold...) or a shop ware, and use it
 			var rt: Vector2 = arena.rewards.bot_target(h)
@@ -194,6 +203,39 @@ func _physics_process(delta: float) -> void:
 			p.move = arena.env.steer(h.position, goal, p.move, 16.0).normalized()
 		_avoid_hazards(h, p)
 		_unstick(h, p)
+
+## Each weapon's real moveset: bow draws to the Perfect Shot flash, the spear charges Cinder Whirl, the
+## shield guards up to a full Dawnbreak, the scythe spends its Souls, the twin blades hold a flurry.
+func _bot_attack(h: Node, p: FakePad, _bd: float) -> void:
+	var cyc := frame % 150
+	match String(h.weapon_id):
+		"bow":
+			if (frame / 90) % 3 == 2:
+				p.attack = frame % 6 < 2 # quick taps
+			elif h.state == "draw":
+				p.attack = not h.perfect_window()
+				if not p.attack:
+					stats_moves["perfect"] = int(stats_moves.get("perfect", 0)) + 1
+			else:
+				p.attack = true
+		"spear":
+			p.attack = frame % 4 < 2 if cyc < 70 else (cyc < 146)
+		"shield":
+			if h.state == "hold":
+				p.attack = h.charge < 1.0
+			else:
+				p.attack = frame % 4 < 2 if cyc < 70 else true
+		"scythe":
+			if h.state == "hold":
+				p.attack = h.charge < 1.0
+			elif h.souls >= 60.0:
+				p.attack = true
+			else:
+				p.attack = frame % 4 < 2
+		"twin":
+			p.attack = cyc < 110
+		_:
+			p.attack = frame % 4 < 2
 
 ## Steer around lava / spikes: probe ahead and sidestep if the next steps are hot; walk out if standing in it.
 func _avoid_hazards(h: Node, p: FakePad) -> void:
@@ -269,5 +311,13 @@ func _quit() -> void:
 	for f in fps_samples: avg += f
 	if fps_samples.size() > 0: avg /= fps_samples.size()
 	print("%s: hazard_frames=%d killer=%s bosses=%s chapter=%d props_broken=%d" % [role.to_upper(), hazard_frames, Game.run_killer, Game.run_bosses, Game.run_chapter, arena.props_broken if is_instance_valid(arena) else -1])
+	var blocks := 0
+	if is_instance_valid(arena):
+		for h in arena.heroes():
+			if h.controlled:
+				blocks += int(h.blocks)
+				for k in h.move_count:
+					stats_moves[k] = int(stats_moves.get(k, 0)) + int(h.move_count[k])
+	print("%s: moves=%s blocks=%d" % [role.to_upper(), stats_moves, blocks])
 	print("%s: frames=%d max_room=%d specials=%d forge_upgrades=%d gold=%d rewards_used=%d purchases=%d" % [role.to_upper(), frame, max_room, stats_specials, stats_forge, Game.run_gold, stats_rewards, arena.rewards.purchases if is_instance_valid(arena) and arena.rewards else 0])
 	get_tree().quit()
