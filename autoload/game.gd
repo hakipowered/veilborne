@@ -210,6 +210,9 @@ var run_killer := "" ## enemy kind, boss speaker id or "trap" (StoryDB.record_ru
 var run_bosses: Array = [] ## boss speaker ids beaten this run
 var run_both_down := false
 var chapter_rooms_override := 0 ## tests: combat rooms per chapter (0 = 6..8 from the seed)
+## Boss Trials (title menu): 1..4 = the run is just that chapter's boss hall; nothing is recorded or earned.
+var practice_boss := 0
+var practice_boons := true
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
@@ -290,8 +293,13 @@ func start_run(seed_value: int) -> void:
 	run_killer = ""
 	run_bosses = []
 	run_both_down = false
-	run_plan = build_run_plan(seed_value)
 	hero_runtime.clear()
+	if practice_boss > 0:
+		var ci := clampi(practice_boss, 1, 4) - 1
+		run_chapter = ci + 1
+		run_plan = [{"floor": CHAPTER_BOSS_FLOORS[ci], "chapter": ci + 1, "type": "boss", "n": 1, "count": 1, "final": true}]
+		return
+	run_plan = build_run_plan(seed_value)
 	data["runs"] += 1
 	save_slot()
 
@@ -317,6 +325,8 @@ func plan_room(idx: int) -> Dictionary:
 	return run_plan[clampi(idx, 0, run_plan.size() - 1)]
 
 func end_run(victory: bool) -> int:
+	if practice_boss > 0: # trials leave no trace in the chronicle
+		return 0
 	var mult := 1.0 + 0.2 * meta_rank("fortune")
 	var earned := int(round((run_shards + run_room * 4 + (40 if victory else 0)) * mult))
 	var sdb = load("res://data/story_db.gd")

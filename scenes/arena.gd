@@ -374,18 +374,23 @@ func _load_room(idx: int, reward := "") -> void:
 		rname = cname
 	hud.set_room_name("%s  ·  %s  ·  %d/%d" % [roman, rname, int(plan_room["n"]), int(plan_room["count"])])
 	if is_boss_room:
-		_music("boss_regent" if plan_room["final"] else "boss_general")
+		_music("boss_regent" if ch == 4 else "boss_general")
 	else:
 		_music(["catacombs", "garden", "forge", "throne"][ch - 1])
 	var lines: Array = []
-	if idx == 0:
+	if idx == 0 and Game.practice_boss > 0:
+		_grant_trial_boons(ch)
+	elif idx == 0:
 		lines = StoryDB.next_lines("run_start", StoryDB.from_save(Game.data))
 		Game.save_slot()
-	if new_chapter:
+	if new_chapter and Game.practice_boss == 0:
 		var title: String = env.get_chapter_title(plan_room["floor"]) if env.has_method("get_chapter_title") else cname
 		var narr := _narrate("run_start" if idx == 0 and lines.is_empty() else "chapter_%d" % ch)
 		hud.show_chapter_card(title, narr)
-	if is_boss_room:
+	if is_boss_room and Game.practice_boss > 0:
+		hud.float_banner("Boss Trial", Color(1.0, 0.85, 0.45))
+		wave_delay = 1.4
+	elif is_boss_room:
 		wave_delay = 999.0
 		var spk := _boss_speaker(boss_kind)
 		lines = StoryDB.boss_intro(spk, StoryDB.from_save(Game.data))
@@ -1634,6 +1639,21 @@ func _door_icon(rid: String) -> Texture2D:
 		return face if face else _icon("portrait_" + spk)
 	return _icon(String(Game.REWARDS.get(rid, {}).get("icon", "orb")))
 
+## Boss Trials: roughly the boons a run would have gathered by this boss (host; synced with the hero).
+func _grant_trial_boons(ch: int) -> void:
+	if not is_authority() or not Game.practice_boons:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = Game.run_seed
+	for h in heroes():
+		for i in 2 + 3 * (ch - 1):
+			var pick: Array = Game.roll_boons(rng, h.boons, 1)
+			if pick.is_empty():
+				break
+			h.add_boon(String(pick[0]["id"]), maxi(1, int(pick[0]["rarity"])) if ch >= 3 else int(pick[0]["rarity"]))
+		h.hp = h.max_hp
+
+
 func _finish(victory: bool) -> void:
 	if run_over:
 		return
@@ -1646,7 +1666,10 @@ func _finish(victory: bool) -> void:
 				all_down = false
 		Game.run_both_down = all_down
 	_music("victory" if victory else "defeat")
-	hud.float_banner("THE REGENT FALLS" if victory else "THE VEIL CLAIMS YOU", Color(1, 0.85, 0.3) if victory else Color(1, 0.3, 0.3))
+	if Game.practice_boss > 0:
+		hud.float_banner("TRIAL WON" if victory else "TRIAL LOST", Color(1, 0.85, 0.3) if victory else Color(1, 0.3, 0.3))
+	else:
+		hud.float_banner("THE REGENT FALLS" if victory else "THE VEIL CLAIMS YOU", Color(1, 0.85, 0.3) if victory else Color(1, 0.3, 0.3))
 	await get_tree().create_timer(2.2).timeout
 	if not is_inside_tree():
 		return

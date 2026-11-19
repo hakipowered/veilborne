@@ -8,6 +8,7 @@ const StoryData = preload("res://data/story.gd")
 const StoryDB = preload("res://data/story_db.gd")
 const DialogueScript = preload("res://ui/dialogue.gd")
 const FitBox = preload("res://ui/fit_box.gd")
+const EnemiesData = preload("res://data/enemies.gd")
 const ARENA_PATH := "res://scenes/arena.gd"
 
 const TEX_TITLE := "res://art/title.jpg"
@@ -545,16 +546,17 @@ func show_title() -> void:
 	pgt.fill_to = Vector2(0.5, 0.0)
 	pool.texture = pgt
 	pool.anchor_left = 0.5; pool.anchor_right = 0.5; pool.anchor_top = 1; pool.anchor_bottom = 1
-	pool.offset_left = -420; pool.offset_right = 420; pool.offset_top = -420; pool.offset_bottom = 20
+	pool.offset_left = -420; pool.offset_right = 420; pool.offset_top = -480; pool.offset_bottom = 20
 	r.add_child(pool)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 2)
 	v.anchor_left = 0.5; v.anchor_right = 0.5; v.anchor_top = 1; v.anchor_bottom = 1
-	v.offset_left = -240; v.offset_right = 240; v.offset_top = -372; v.offset_bottom = -36
+	v.offset_left = -240; v.offset_right = 240; v.offset_top = -434; v.offset_bottom = -36
 	r.add_child(v)
 	var items := [
 		["Solo Descent", func(): show_slots("solo"), "Solo"],
 		["Co-op Descent", func(): show_slots("coop"), "Coop"],
+		["Boss Trials", show_trials, "Trials"],
 		["Settings", show_settings, "Settings"],
 		["About", show_about, "About"],
 		["Quit", _quit, "Quit"],
@@ -579,6 +581,98 @@ func show_title() -> void:
 		var n := _pending_notice
 		_pending_notice = ""
 		show_message("The Veil Wavers", n)
+
+
+# =====================================================================  1b. boss trials
+
+var _trial_hero := ""
+var _trial_weapon := ""
+
+
+## Boss Trials: pick a heroine, a weapon and a boss and drop straight into its hall (for trying boss changes
+## right away). Uses the newest solo chronicle for vows and aspects; nothing is recorded or earned.
+func show_trials() -> void:
+	if _trial_hero == "":
+		_trial_hero = "kaela"
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(760, 0)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	panel.add_child(v)
+	v.add_child(VTheme.title_label("Boss Trials", 52, VTheme.GOLD_BRIGHT, 8, "display"))
+	var sub := _label("Straight into any boss hall. Nothing is saved, no shards are earned.", "Quote", 20)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(sub)
+	v.add_child(VTheme.divider(380, 24))
+	# heroine
+	var hr := HBoxContainer.new()
+	hr.alignment = BoxContainer.ALIGNMENT_CENTER
+	hr.add_theme_constant_override("separation", 10)
+	v.add_child(hr)
+	for hid in Game.HEROES.keys():
+		var id2: String = hid
+		var hb := _button(String(Game.HEROES[hid]["name"]).split(" ")[0], func():
+			_trial_hero = id2
+			_trial_weapon = ""
+			show_trials(), "SmallButton", 200)
+		hb.disabled = hid == _trial_hero
+		hr.add_child(hb)
+	# weapon
+	var wr := HFlowContainer.new()
+	wr.alignment = FlowContainer.ALIGNMENT_CENTER
+	wr.add_theme_constant_override("h_separation", 8)
+	wr.add_theme_constant_override("v_separation", 8)
+	v.add_child(wr)
+	var cur_w := _trial_weapon if _trial_weapon != "" else String(Game.HEROES[_trial_hero]["weapon"])
+	for wid in Game.WEAPON_ORDER:
+		var w2: String = wid
+		var wb := _button(String(Game.WEAPONS[wid]["kind"]), func():
+			_trial_weapon = w2
+			show_trials(), "SmallButton", 138)
+		wb.disabled = wid == cur_w
+		wr.add_child(wb)
+	var boons := CheckButton.new()
+	boons.text = "Start with boons for that chapter"
+	boons.button_pressed = Game.practice_boons
+	boons.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	boons.toggled.connect(func(on: bool): Game.practice_boons = on)
+	v.add_child(boons)
+	v.add_child(VTheme.divider(380, 20))
+	var first: Button = null
+	for ch in range(1, 5):
+		var kind := String(EnemiesData.chapter(ch)["boss"])
+		var c2: int = ch
+		var bb := _button("%s   %s" % [["I", "II", "III", "IV"][ch - 1], String(EnemiesData.NAMES.get(kind, kind))], func(): _start_trial(c2, cur_w), "", 600, "confirm")
+		bb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		v.add_child(bb)
+		if first == null:
+			first = bb
+	var back := _button("Back", func(): _close_modal(), "", 240, "back")
+	back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(back)
+	_modal_shell(panel)
+	_focus_first(first)
+
+
+func _start_trial(ch: int, weapon: String) -> void:
+	# newest solo chronicle (its vows and aspects apply), else a scratch one
+	var best := -1
+	var best_t := ""
+	for i in range(0, 4):
+		var d := Game.peek_slot("solo", i)
+		if not d.is_empty() and String(d.get("last_played", "")) > best_t:
+			best_t = String(d.get("last_played", ""))
+			best = i
+	if best >= 0:
+		Game.load_slot("solo", best)
+	else:
+		Game.load_slot("trial", 1)
+	Game.set_loadout(weapon, int(Game.data.get("last_aspect", 0)) if String(Game.data.get("last_weapon", "")) == weapon else 0)
+	Game.practice_boss = ch
+	Game.players = [{"peer": 1, "local_index": 0, "hero": _trial_hero}]
+	_close_modal()
+	Game.start_run(randi())
+	start_arena()
 
 
 ## Title menu entry: engraved caps text; gold flourish blooms beneath on hover/focus.
@@ -1667,6 +1761,15 @@ func _free_arena() -> void:
 
 func _on_run_finished(victory: bool) -> void:
 	if screen != "arena":
+		return
+	if Game.practice_boss > 0:
+		Game.practice_boss = 0
+		call_deferred("_free_arena")
+		if is_instance_valid(_dialogue):
+			_dialogue.abort()
+			_dialogue = null
+		show_title()
+		show_trials()
 		return
 	var earned := Game.end_run(victory)
 	call_deferred("_free_arena")
