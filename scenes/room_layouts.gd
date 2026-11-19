@@ -62,12 +62,14 @@ const TEMPLATES := {
 	"twin": {"title": "Twin Chasms", "kind": "elite", "start": [4.2, 4.2], "rough": 0.9,
 		"ops": [["add", "crect", -6.4, -6.4, 6.4, 6.4, 2.2], ["sub", "circle", -2.8, 1.6, 1.6], ["sub", "circle", 1.6, -2.8, 1.6]]},
 	# ------------------------------------------------------------------ boss halls (big, mostly open)
-	"boss_round": {"title": "Round Hall", "kind": "boss", "start": [5.4, 5.4], "rough": 0.9,
-		"ops": [["add", "circle", 0.0, 0.0, 8.6], ["add", "crect", -8.0, -8.0, 0.0, 0.0, 0.0],
-			["sub", "circle", 5.6, -2.2, 1.1], ["sub", "circle", -2.2, 5.6, 1.1]]},
-	"boss_octagon": {"title": "Great Octagon", "kind": "boss", "start": [5.0, 5.0], "rough": 0.7,
-		"ops": [["add", "crect", -8.4, -8.4, 8.4, 8.4, 3.6], ["cut", "rect", 7.2, -1.2, 9.0, 1.2], ["cut", "rect", -1.2, 7.2, 1.2, 9.0]],
-		"pillars": [[-4.6, -1.0], [-1.0, -4.6]]},
+	# Boss halls are about 1.6x a combat room across (the reference's boss rooms run ~1.8x), so set pieces and
+	# adds have space and a heroine can always run out of a ring.
+	"boss_round": {"title": "Round Hall", "kind": "boss", "start": [7.2, 7.2], "rough": 0.9,
+		"ops": [["add", "circle", 0.0, 0.0, 11.2], ["add", "crect", -10.4, -10.4, 0.0, 0.0, 0.0],
+			["sub", "circle", 7.3, -2.9, 1.3], ["sub", "circle", -2.9, 7.3, 1.3]]},
+	"boss_octagon": {"title": "Great Octagon", "kind": "boss", "start": [6.7, 6.7], "rough": 0.7,
+		"ops": [["add", "crect", -10.9, -10.9, 10.9, 10.9, 4.6], ["cut", "rect", 9.4, -1.5, 11.7, 1.5], ["cut", "rect", -1.5, 9.4, 1.5, 11.7]],
+		"pillars": [[-6.0, -1.3], [-1.3, -6.0]]},
 	# ------------------------------------------------------------------ small rooms (shop, rewards, rest)
 	"small_round": {"title": "Alcove", "kind": "small", "start": [2.6, 2.6], "rough": 0.9,
 		"ops": [["add", "circle", 0.0, 0.0, 5.0], ["add", "rect", -4.6, -4.6, 0.0, 0.0]]},

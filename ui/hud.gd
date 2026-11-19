@@ -456,6 +456,8 @@ func _process(delta: float) -> void:
 		else:
 			_boss_trail = bf
 		sig = sig * 31 + int(_boss.hp)
+		if _boss.has_method("shielded") and _boss.shielded():
+			sig = sig * 31 + Time.get_ticks_msec() / 50
 		sig = sig * 31 + int(_boss_trail * 500.0)
 	var sh := Game.run_shards
 	var gold := Game.run_gold
@@ -580,7 +582,14 @@ func _draw_bars() -> void:
 			drawer.draw_rect(Rect2(ix2 + iw2 * f, iy2, iw2 * (_boss_trail - f), ih2), Color(1.0, 0.9, 0.7, 0.85))
 		drawer.draw_rect(Rect2(ix2, iy2, iw2 * f, ih2), Color(0.62, 0.24, 0.9))
 		drawer.draw_rect(Rect2(ix2, iy2, iw2 * f, ih2 * 0.4), Color(0.95, 0.75, 1.0, 0.3))
-		drawer.draw_rect(Rect2(ix2 + iw2 * 0.5 - 1, iy2, 2, ih2), Color(1, 0.85, 0.5, 0.8))
+		# one tick per stage break; a passed break dims
+		var marks: Array = _boss.phase_marks() if _boss.has_method("phase_marks") else [0.5]
+		for m in marks:
+			var mx := ix2 + iw2 * float(m)
+			var on := f > float(m)
+			drawer.draw_rect(Rect2(mx - 1.5, iy2 - 3.0, 3.0, ih2 + 6.0), Color(1, 0.85, 0.5, 0.9 if on else 0.3))
+		if _boss.has_method("shielded") and _boss.shielded():
+			drawer.draw_rect(Rect2(ix2, iy2, iw2, ih2), Color(1.0, 0.9, 0.6, 0.25 + 0.15 * sin(Time.get_ticks_msec() * 0.012)), false, 3.0)
 		if _tex_boss:
 			drawer.draw_texture_rect(_tex_boss, Rect2(bx2, by2, bw, bh), false)
 		_text_c(Vector2(bx2, by2 + bh + 16), bw, (_boss.display_name() if _boss.has_method("display_name") else "The Hollow Regent").to_upper(), 20, Color(0.92, 0.8, 1.0), _font_caps)

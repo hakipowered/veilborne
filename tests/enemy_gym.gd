@@ -17,6 +17,8 @@ var fails: Array = []
 var report: Array = []
 var _forced := false
 var _last_missing: Array = []
+var shield_seen := false
+var _shot := {}
 
 
 func _ready() -> void:
@@ -50,7 +52,7 @@ func _physics_process(delta: float) -> void:
 	if cur == null:
 		_next()
 		return
-	var lim := 2400 if cur.is_boss else 1800
+	var lim: int = 2400 + 700 * cur._phases.size() if cur.is_boss else 1800
 	# first half: the bot only circles the enemy at alternating near/far distances (no hits), so every
 	# range-gated attack gets a chance to show
 	if (frame - t0 < lim / 2 or (not _last_missing.is_empty() and frame - t0 < lim)) and is_instance_valid(cur):
@@ -65,6 +67,16 @@ func _physics_process(delta: float) -> void:
 			var radial: float = clampf((to.length() - want) / 80.0, -1.0, 1.0)
 			p.move = (to.normalized() * radial + to.normalized().orthogonal() * 0.7).normalized()
 	if is_instance_valid(cur) and not cur.is_dead():
+		# --shots=dir: one frame per new boss attack (mid strike) and per stage break
+		if shot_dir != "" and cur.is_boss:
+			var tag := ""
+			if cur.shielded() and cur.state_t > 0.6 and not _shot.has("shield%d" % cur.phase):
+				tag = "shield%d" % cur.phase
+			elif cur.state == EnemyScript.S_ATTACK and cur.atk >= 0 and cur.state_t > 0.5 and not _shot.has(cur.brain.atk_id(cur.atk)):
+				tag = cur.brain.atk_id(cur.atk)
+			if tag != "":
+				_shot[tag] = true
+				get_viewport().get_texture().get_image().save_png("%s/%s_%s.png" % [shot_dir, cur_kind, tag])
 		if cur.brain != null and cur.state == EnemyScript.S_ATTACK and cur.atk >= 0:
 			seen[cur.brain.atk_id(cur.atk)] = true
 		if cur.hp < cur.max_hp:
@@ -81,11 +93,16 @@ func _physics_process(delta: float) -> void:
 				var tg = cur.target_node()
 				var d: Vector2 = cur.aim if tg == null else (tg.position - cur.position).normalized()
 				cur._begin(miss[0], d)
-		# bosses: push through the phase thresholds so every phase gets exercised
-		if cur.is_boss and frame - t0 == lim / 3:
-			cur.take_damage(cur.max_hp * 0.4, false, cur.position + Vector2(50, 0), "gym")
-		if cur.is_boss and cur._phases.size() > 1 and frame - t0 == 2 * lim / 3:
-			cur.take_damage(cur.max_hp * 0.3, false, cur.position + Vector2(50, 0), "gym")
+		# bosses: push through each stage threshold in turn so every stage (and its shielded break) runs
+		if cur.is_boss:
+			var n: int = cur._phases.size()
+			for i in n:
+				if frame - t0 == lim * (i + 1) / (n + 2):
+					var want: float = cur.max_hp * float(cur._phases[i]) - 5.0
+					if cur.hp > want:
+						cur.take_damage(cur.hp - want, false, cur.position + Vector2(50, 0), "gym")
+			if cur.shielded():
+				shield_seen = true
 		if frame - t0 >= lim and not _forced:
 			_forced = true
 			cur.take_damage(cur.hp + 1.0, false, cur.position + Vector2(50, 0), "gym")
@@ -127,6 +144,8 @@ func _next() -> void:
 	seen = {}
 	_last_missing = []
 	hurt = false
+	shield_seen = false
+	_shot = {}
 	phases = 0
 	_forced = false
 	if cur == null:
@@ -157,6 +176,8 @@ func _finish(err: String) -> void:
 		fails.append(cur_kind + ": attacks never ran " + str(_last_missing))
 	if not hurt:
 		fails.append(cur_kind + ": never took damage")
+	if is_instance_valid(cur) and cur.is_boss and not shield_seen:
+		fails.append(cur_kind + ": no shielded stage break")
 	if is_instance_valid(cur) and cur.is_boss and phases < cur._phases.size():
 		fails.append(cur_kind + ": phase %d/%d" % [phases, cur._phases.size()])
 	cur = null

@@ -1,8 +1,11 @@
 extends "res://entities/enemies/brain.gd"
-## The Hollow Regent (chapter 4 final boss, 3 phases: thresholds 66% / 33%, roar beat + speed-up at each).
+## The Hollow Regent (chapter 4 final boss, 4 stages: thresholds 75% / 50% / 25%; each break is a shielded roar
+## that brings adds, and the speed-up is spread over the stages).
 ## Phase 1: void burst fan, throne-charge (wall stun), slam + scattered aftershocks.
 ## Phase 2: adds summons (pikes / casters), runes under every heroine, rotating spiral of bolts.
 ## Phase 3: adds wisp swarms, ripple ring waves; the charge chains into a second charge.
+## Phase 4 (last quarter): the eclipse (two opposed arms of bolts turn round him for 3 s, the reference's long
+##          beam cast in our own form, with a long recovery to punish), echoes of his three generals' creatures.
 
 const COL := Color(0.75, 0.35, 1.0)
 const COL2 := Color(1.0, 0.35, 0.55)
@@ -33,6 +36,10 @@ func attacks() -> Dictionary:
 			"aw": "windup", "aa": "cast", "tele": "ring", "tele_r": 90.0, "col": COL2},
 		"waves": {"w": 0.9, "a": 0.3, "r": 0.9, "cd": 6.0, "range": [0.0, 900.0], "weight": 1.3, "phase": 2,
 			"aw": "slam_w", "aa": "slam", "tele": "ring", "tele_r": 150.0, "col": COL2},
+		"eclipse": {"w": 1.4, "a": 3.0, "r": 1.6, "cd": 11.0, "range": [0.0, 900.0], "weight": 1.8, "phase": 3, "rep": 1,
+			"aw": "windup", "aa": "cast", "loop_a": true, "tele": "ring", "tele_r": 170.0, "col": COL2},
+		"echoes": {"w": 1.0, "a": 0.4, "r": 1.0, "cd": 14.0, "range": [0.0, 900.0], "weight": 1.0, "phase": 3,
+			"aw": "cast", "aa": "cast", "tele": "ring", "tele_r": 120.0, "col": COL2},
 	}
 
 
@@ -48,9 +55,9 @@ func on_windup(id: String) -> void:
 			for h in live_heroes():
 				e.arena.telegraph_slam(e.arena.resolve_collision(h.position, 10.0), 80.0, e.windup_len(), 16.0, COL)
 				e.arena.telegraph_slam(e.arena.resolve_collision(lead(1.2), 10.0), 70.0, e.windup_len() + 0.5, 14.0, COL)
-		"spiral":
+		"spiral", "eclipse":
 			_spiral_t = 0.0
-			_spiral_a = randf() * TAU
+			_spiral_a = e.aim.angle() + PI * 0.5
 
 
 func on_strike(id: String) -> void:
@@ -67,6 +74,10 @@ func on_strike(id: String) -> void:
 			summon("voidcaster", 1, 2)
 		"wisps":
 			summon("wisp", 5, 7, 110.0)
+		"echoes":
+			summon("shade", 2, 3)
+			summon("sporeling", 1, 2)
+			summon("cinderimp", 1, 2)
 		"waves":
 			ring(18, 230.0, 11.0, COL2, randf() * TAU, 13.0)
 			slam_ring(e.position, 180.0, 10, 40.0, 0.3, 13.0, COL2)
@@ -81,13 +92,27 @@ func strike_move(id: String, _t: float) -> Vector2:
 		if _spiral_t >= 0.13:
 			_spiral_t -= 0.13
 			_spiral_a += 0.33
-			ring(3 + e.phase, 230.0, 10.0, COL, _spiral_a, 12.0)
+			ring(3 + mini(e.phase, 2), 230.0, 10.0, COL, _spiral_a, 12.0)
+	elif id == "eclipse":
+		var dt := e.get_physics_process_delta_time()
+		_spiral_t += dt
+		_spiral_a += dt * 0.95
+		if _spiral_t >= 0.09:
+			_spiral_t -= 0.09
+			for arm in 2:
+				var d := Vector2.RIGHT.rotated(_spiral_a + PI * arm)
+				e.arena.spawn_projectile(e.position + Vector2(0.0, -6.0) + d * (e.radius + 6.0), d * 420.0, 12.0, COL2 if arm == 0 else COL, 13.0)
 	return Vector2.ZERO
 
 
 func on_phase(p: int) -> void:
 	ring(20 + 4 * p, 230.0, 11.0, COL2 if p >= 2 else COL, 0.0, 13.0)
-	if p >= 2:
+	if p >= 3:
+		slam_ring(e.position, 220.0, 12, 42.0, 1.0, 14.0, COL2)
+		slam_ring(e.position, 360.0, 18, 42.0, 1.5, 14.0, COL, PI / 18.0)
+		summon("hollowchampion", 1, 1)
+		summon("wisp", 3, 6, 110.0)
+	elif p >= 2:
 		summon("wisp", 3, 6, 110.0)
 	else:
 		summon("voidcaster", 1, 2)

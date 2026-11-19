@@ -13,7 +13,8 @@ extends RefCounted
 ##   "tele_len", "tele_w", "tele_arc" (deg), "tele_r",
 ##   "speed": move speed during the strike (along aim), "hit_r": contact hitbox radius while active, "dmg": its damage,
 ##   "charge": true = stops (and stuns for "stun" s) when it hits a wall, "leap": px height arc while active,
-##   "next": id of a follow-up attack (combo; "next_p" chance), "lob": true draws a pod flying to aux during a+r }
+##   "next": id of a follow-up attack (combo; "next_p" chance), "lob": true draws a pod flying to aux during a+r,
+##   "rep": most times in a row it may be picked (default 2) }
 
 const S_IDLE := 0
 const S_MOVE := 1
@@ -28,6 +29,8 @@ var e: Node2D = null   # the enemy (entities/enemy.gd)
 var A: Dictionary = {}  # attack table
 var ids: Array = []     # attack ids in table order (index is what gets replicated)
 var _cds := {}          # host: per-attack cooldown left
+var _last := ""         # host: last chosen attack and how many times in a row ("rep" caps the streak)
+var _streak := 0
 
 
 func _init() -> void:
@@ -113,18 +116,25 @@ func choose(dist: float) -> String:
 		total += w
 		cands.append([id, w])
 	if cands.is_empty():
+		_last = ""   # nothing else was usable: let the capped attack come back next time
 		return ""
 	var r := randf() * total
+	var pick: String = cands[-1][0]
 	for c in cands:
 		r -= c[1]
 		if r <= 0.0:
-			return c[0]
-	return cands[-1][0]
+			pick = c[0]
+			break
+	_streak = _streak + 1 if pick == _last else 1
+	_last = pick
+	return pick
 
 
 func usable(id: String, dist: float) -> bool:
 	var a: Dictionary = A[id]
 	if _cds.get(id, 0.0) > 0.0:
+		return false
+	if id == _last and _streak >= int(a.get("rep", 2 if e.is_boss else 99)):
 		return false
 	if int(a.get("phase", 0)) > e.phase or int(a.get("max_phase", 99)) < e.phase:
 		return false

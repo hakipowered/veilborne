@@ -19,6 +19,7 @@ const S_CHARGE := 9
 const S_W_SLAM := 10
 const S_SUMMON := 11
 const S_ROAR := 12       # boss phase change / target switch beat
+const PHASE_ROAR := 2.2  # s: stage break (shielded, adds arrive)
 const S_STUN := 16       # dazed (charged into a wall): free hits
 
 ## Replicated kind index (arena.gd KINDS covers the first four; pack() carries the rest so clients self-correct).
@@ -34,8 +35,8 @@ const KINDS := {
 	"shade": {"h": 110.0, "hp": 34.0, "r": 18.0, "speed": 150.0, "hover": 12.0, "mass": 1.0},
 	"spitter": {"h": 80.0, "hp": 24.0, "r": 18.0, "speed": 120.0, "hover": 0.0, "mass": 1.0},
 	"brute": {"h": 150.0, "hp": 95.0, "r": 30.0, "speed": 70.0, "hover": 0.0, "mass": 3.0},
-	"regent": {"h": 260.0, "hp": 1500.0, "r": 48.0, "speed": 95.0, "hover": 6.0, "mass": 8.0, "brain": "boss_regent",
-		"boss": true, "aggro": true, "phases": [0.66, 0.33]},
+	"regent": {"h": 260.0, "hp": 2700.0, "r": 48.0, "speed": 95.0, "hover": 6.0, "mass": 8.0, "brain": "boss_regent",
+		"boss": true, "aggro": true, "phases": [0.75, 0.5, 0.25]},
 	# Chapter 2: Drowned Garden
 	"bogwraith": {"h": 150.0, "hp": 46.0, "r": 20.0, "speed": 165.0, "hover": 8.0, "mass": 1.0, "brain": "bogwraith"},
 	"sporeling": {"h": 118.0, "hp": 40.0, "r": 22.0, "speed": 85.0, "hover": 0.0, "mass": 1.2, "brain": "sporeling"},
@@ -49,12 +50,12 @@ const KINDS := {
 	"voidcaster": {"h": 166.0, "hp": 60.0, "r": 20.0, "speed": 92.0, "hover": 0.0, "mass": 1.0, "brain": "voidcaster"},
 	"hollowchampion": {"h": 200.0, "hp": 260.0, "r": 30.0, "speed": 112.0, "hover": 0.0, "mass": 5.0, "brain": "hollowchampion", "elite": true},
 	# The Hollow Regent's generals (chapter bosses)
-	"gen_bloom": {"h": 270.0, "hp": 1100.0, "r": 44.0, "speed": 108.0, "hover": 0.0, "mass": 9.0, "brain": "boss_bloom",
-		"boss": true, "aggro": true, "phases": [0.5]},
-	"gen_anvil": {"h": 290.0, "hp": 1300.0, "r": 50.0, "speed": 92.0, "hover": 0.0, "mass": 10.0, "brain": "boss_anvil",
-		"boss": true, "aggro": true, "phases": [0.5]},
-	"gen_seneschal": {"h": 280.0, "hp": 1400.0, "r": 42.0, "speed": 118.0, "hover": 0.0, "mass": 9.0, "brain": "boss_seneschal",
-		"boss": true, "aggro": true, "phases": [0.5]},
+	"gen_bloom": {"h": 270.0, "hp": 1800.0, "r": 44.0, "speed": 108.0, "hover": 0.0, "mass": 9.0, "brain": "boss_bloom",
+		"boss": true, "aggro": true, "phases": [0.66, 0.33]},
+	"gen_anvil": {"h": 290.0, "hp": 2200.0, "r": 50.0, "speed": 92.0, "hover": 0.0, "mass": 10.0, "brain": "boss_anvil",
+		"boss": true, "aggro": true, "phases": [0.66, 0.33]},
+	"gen_seneschal": {"h": 280.0, "hp": 1500.0, "r": 42.0, "speed": 118.0, "hover": 0.0, "mass": 9.0, "brain": "boss_seneschal",
+		"boss": true, "aggro": true, "phases": [0.66, 0.33]},
 	# homing seeker orb spawned by bosses (VFX body, no sprite)
 	"wisp": {"h": 40.0, "hp": 6.0, "r": 12.0, "speed": 200.0, "hover": 34.0, "mass": 0.6, "brain": "wisp", "sprite": false},
 }
@@ -192,7 +193,17 @@ func speed() -> float:
 
 ## Phase speed-up multiplier (bosses get faster each phase).
 func spd_mul() -> float:
-	return 1.0 + 0.28 * phase
+	return 1.0 + 0.56 * float(phase) / float(maxi(1, _phases.size()))
+
+
+## HP fractions where the next stage starts (boss bar ticks).
+func phase_marks() -> Array:
+	return _phases
+
+
+## Stage break: the boss is shielded (no damage) during the phase roar.
+func shielded() -> bool:
+	return is_boss and state == S_ROAR and atk == -3
 
 
 func target_node() -> Node2D:
@@ -417,7 +428,7 @@ func _brain_think(delta: float, has_t: bool, dir: Vector2, dist: float) -> Vecto
 		S_ROAR:
 			if has_t and state_t < 0.2:
 				aim = dir
-			if state_t >= (1.35 if atk == -3 else 0.6):
+			if state_t >= (PHASE_ROAR if atk == -3 else 0.6):
 				_set_state(S_MOVE)
 				_cd = minf(_cd, 0.3)
 		S_STUN:
@@ -574,6 +585,12 @@ func apply_burn(dps: float) -> void:
 func take_damage(amount: float, crit: bool, from_pos: Vector2, attacker_key: String) -> void:
 	if _dead:
 		return
+	if shielded():
+		if _block_t <= 0.0 and arena != null:
+			_block_t = 0.3
+			arena.spark(position + (from_pos - position).normalized() * radius + Vector2(0, -60), Color(1.0, 0.9, 0.6), 5)
+			arena.float_text(position + Vector2(0, -_height - 10.0), "SHIELDED", Color(1.0, 0.9, 0.6))
+		return
 	if attacker_key != "":
 		_last_attacker = attacker_key
 	if brain != null:
@@ -614,7 +631,13 @@ func pull(target: Vector2, strength: float) -> void:
 func _apply_damage(amount: float) -> void:
 	if _dead:
 		return
+	# a stage break can't be skipped: while one is pending, hp holds just under its threshold
+	var floor_hp := -INF
+	if _pending_phase > phase and _pending_phase - 1 < _phases.size():
+		floor_hp = max_hp * float(_phases[_pending_phase - 1]) - 1.0
 	hp -= amount
+	if hp < floor_hp:
+		hp = floor_hp
 	_show_bar = true
 	if _phases.size() > _pending_phase and hp > 0.0 and hp <= max_hp * float(_phases[_pending_phase]):
 		_pending_phase += 1
@@ -875,7 +898,7 @@ func _brain_anim() -> void:
 			if entered:
 				var an2 := _play_any(["roar", "cast", "windup"], true)
 				if an2 != "":
-					body.play_timed(an2, 1.35 if atk == -3 else 0.6)
+					body.play_timed(an2, PHASE_ROAR if atk == -3 else 0.6)
 		S_STUN:
 			if entered:
 				_play_any(["stun", "hurt"], true)
@@ -929,6 +952,8 @@ func _draw() -> void:
 		draw_circle(Vector2.ZERO, sr * 1.25, Color(0, 0, 0, 0.14))
 		draw_circle(Vector2.ZERO, sr, Color(0, 0, 0, 0.3))
 	draw_set_transform(Vector2.ZERO)
+	if shielded():
+		_draw_stage_shield()
 
 	if brain != null:
 		_draw_brain_tele()
@@ -957,6 +982,26 @@ func _draw() -> void:
 		if is_elite:
 			draw_rect(Rect2(-w * 0.5 - 3.0, y - 3.0, w + 6.0, 11.0), Color(1.0, 0.8, 0.35, 0.9), false, 1.5)
 		draw_rect(Rect2(-w * 0.5, y, w * frac, 5.0), Color(0.9, 0.18, 0.2) if not burning else Color(1.0, 0.55, 0.15))
+
+
+## Stage-break ward: a pulsing dome of runes round the boss while it can't be hurt.
+func _draw_stage_shield() -> void:
+	var k := clampf(state_t / PHASE_ROAR, 0.0, 1.0)
+	var grow := minf(1.0, state_t * 5.0)
+	var fade := 1.0 - smoothstep(0.85, 1.0, k)
+	var r := (radius + 46.0) * grow
+	var c := Color(1.0, 0.86, 0.55)
+	var cy := -_height * 0.45
+	draw_set_transform(Vector2(0.0, cy * 0.5), 0.0, Vector2(1.0, 1.0))
+	var pulse := 0.5 + 0.5 * sin(_anim_t * 9.0)
+	draw_circle(Vector2(0.0, cy * 0.5), r * 1.25, Color(c, 0.07 * fade))
+	draw_arc(Vector2(0.0, cy * 0.5), r * 1.25, 0.0, TAU, 48, Color(c, (0.45 + 0.3 * pulse) * fade), 3.0, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.45))
+	for i in 8:
+		var a := _anim_t * 1.6 + TAU * i / 8.0
+		draw_circle(Vector2.RIGHT.rotated(a) * r * 1.3, 5.0, Color(c, 0.8 * fade))
+	draw_arc(Vector2.ZERO, r * 1.3, 0.0, TAU, 48, Color(c, 0.5 * fade), 2.0, true)
+	draw_set_transform(Vector2.ZERO)
 
 
 func _draw_brain_tele() -> void:

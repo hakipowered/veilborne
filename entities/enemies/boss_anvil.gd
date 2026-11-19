@@ -2,8 +2,10 @@ extends "res://entities/enemies/brain.gd"
 ## Hollis the Forgemaster (chapter 3 general). Giant smith with a forge hammer.
 ## Phase 1: two-hit hammer combo, bull charge (stuns itself on walls), quake slam with three ripple waves,
 ##          stomp ring, calls cinder imps.
-## Phase 2 (50% HP, roar): faster; meteor embers rain on the heroines, spinning advance, charge chains into a
-##          second charge.
+## Stage 2 (66% HP, shielded roar + imps): faster; meteor embers rain on the heroines, spinning advance, charge
+##          chains into a second charge.
+## Stage 3 (33% HP, shielded roar + quake ring): falling anvils hunt each heroine (three drops along her path,
+##          each with a shock ring), forge fissures split the floor outward; both leave him open for 2+ s.
 
 const COL := Color(1.0, 0.45, 0.12)
 const COL2 := Color(1.0, 0.8, 0.25)
@@ -27,13 +29,17 @@ func attacks() -> Dictionary:
 			"aw": "slam_w", "aa": "slam", "col": COL},
 		"stomp": {"w": 0.6, "a": 0.2, "r": 0.6, "cd": 3.0, "range": [0.0, 150.0], "weight": 1.5,
 			"aw": "stomp_w", "aa": "stomp", "tele": "ring", "tele_r": 160.0, "col": COL},
-		"summon": {"w": 1.0, "a": 0.3, "r": 0.7, "cd": 12.0, "range": [0.0, 900.0], "weight": 1.0,
+		"summon": {"w": 1.0, "a": 0.3, "r": 0.7, "cd": 12.0, "range": [0.0, 900.0], "weight": 1.0, "max_phase": 1,
 			"aw": "roar", "aa": "stomp", "tele": "ring", "tele_r": 110.0, "col": COL},
 		"meteor": {"w": 1.0, "a": 0.3, "r": 0.8, "cd": 6.0, "range": [0.0, 900.0], "weight": 1.5, "phase": 1,
 			"aw": "roar", "aa": "stomp", "col": COL2},
 		"spin": {"w": 0.6, "a": 1.6, "r": 1.1, "cd": 6.0, "range": [0.0, 280.0], "weight": 1.2, "phase": 1,
 			"aw": "spin_w", "aa": "spin", "loop_a": true, "tele": "ring", "tele_r": 140.0, "col": COL2,
 			"hit_r": 92.0, "dmg": 14.0},
+		"anvils": {"w": 1.1, "a": 0.3, "r": 2.4, "cd": 8.0, "range": [0.0, 900.0], "weight": 1.6, "phase": 2, "rep": 1,
+			"aw": "roar", "aa": "slam", "col": COL2},
+		"fissures": {"w": 1.0, "a": 0.3, "r": 2.0, "cd": 7.0, "range": [0.0, 900.0], "weight": 1.4, "phase": 2, "rep": 1,
+			"aw": "slam_w", "aa": "slam", "tele": "ring", "tele_r": 120.0, "col": COL},
 	}
 
 
@@ -43,6 +49,16 @@ func base_cd() -> float:
 
 func on_windup(id: String) -> void:
 	match id:
+		"anvils":
+			var w: float = e.windup_len()
+			for h in live_heroes():
+				var v = h.get("vel")
+				var hv: Vector2 = v if v is Vector2 else Vector2.ZERO
+				for k in 3:
+					var p: Vector2 = e.arena.resolve_collision(h.position + hv * (0.35 + 0.45 * k) * 0.6, 10.0)
+					var t: float = w + 0.25 + 0.5 * k
+					e.arena.telegraph_slam(p, 110.0, t, 22.0, COL2)
+					slam_ring(p, 190.0, 8, 34.0, t + 0.3, 10.0, COL, k * 0.4)
 		"quake":
 			e.arena.telegraph_slam(ahead(100.0), 125.0, e.windup_len(), 24.0, COL)
 		"meteor":
@@ -73,6 +89,14 @@ func on_strike(id: String) -> void:
 			e.arena.shake(8.0)
 		"summon":
 			summon("cinderimp", 2, 3)
+		"anvils":
+			e.arena.shake(8.0)
+		"fissures":
+			e.arena.shake(12.0)
+			var a0 := randf() * TAU
+			for k in 6:
+				var d := Vector2.RIGHT.rotated(a0 + TAU * k / 6.0) * Vector2(1.0, 0.62)
+				slam_line(e.position, d, 7, 80.0, 40.0, 0.2, 0.08, 15.0, COL)
 
 
 func strike_move(id: String, _t: float) -> Vector2:
@@ -83,8 +107,11 @@ func strike_move(id: String, _t: float) -> Vector2:
 	return Vector2.ZERO
 
 
-func on_phase(_p: int) -> void:
+func on_phase(p: int) -> void:
 	slam_ring(e.position, 200.0, 12, 40.0, 0.5, 14.0, COL2)
+	if p >= 2:
+		slam_ring(e.position, 330.0, 18, 40.0, 1.1, 14.0, COL, PI / 18.0)
+		summon("forgegolem", 1, 2)
 	summon("cinderimp", 2, 4)
 
 
